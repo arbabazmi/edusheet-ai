@@ -4,7 +4,11 @@
  * @agent DEV
  */
 
-import { CURRICULUM } from './topics.js';
+import {
+  getStandardsForGradeSubject,
+  getQuestionTypesForGradeSubject,
+  getDescriptionForGradeSubject,
+} from './topics.js';
 
 /** Canonical JSON schema sent to Claude as part of the prompt */
 const WORKSHEET_SCHEMA = `{
@@ -29,15 +33,6 @@ const WORKSHEET_SCHEMA = `{
     }
   ]
 }`;
-
-/** Question type guidance per subject */
-const QUESTION_TYPES = {
-  Math: 'fill-in-the-blank, multiple-choice, show-your-work, word-problem, true-false',
-  ELA: 'multiple-choice, short-answer, fill-in-the-blank, matching',
-  Science: 'multiple-choice, true-false, short-answer',
-  'Social Studies': 'multiple-choice, matching, short-answer',
-  Health: 'multiple-choice, true-false, short-answer',
-};
 
 /**
  * Returns the system prompt establishing Claude's role
@@ -65,14 +60,17 @@ export function buildSystemPrompt() {
  */
 export function buildUserPrompt(options) {
   const { grade, subject, topic, difficulty, questionCount } = options;
-  const curriculumData = CURRICULUM[grade]?.[subject];
-  const standards = curriculumData?.standards?.join(', ') || 'CCSS';
-  const questionTypes = QUESTION_TYPES[subject] || 'multiple-choice, short-answer';
+
+  const standards = getStandardsForGradeSubject(grade, subject).join(', ') || 'CCSS';
+  const questionTypes = getQuestionTypesForGradeSubject(grade, subject).join(', ');
+  const description = getDescriptionForGradeSubject(grade, subject);
 
   const mathExtra =
     subject === 'Math' ? '\n- Include at least one word problem' : '';
   const elaExtra =
     subject === 'ELA' ? '\n- Include reading comprehension elements where appropriate' : '';
+  const contextHint = description
+    ? `\n- Curriculum context: ${description}` : '';
 
   return `Generate a ${difficulty} difficulty worksheet for Grade ${grade} ${subject} on the topic of "${topic}".
 
@@ -82,7 +80,7 @@ Requirements:
 - Standards: ${standards}
 - Age-appropriate language for Grade ${grade}
 - Include a brief student-facing instruction line
-- Vary question types for engagement${mathExtra}${elaExtra}
+- Vary question types for engagement${mathExtra}${elaExtra}${contextHint}
 - Each multiple-choice question must have exactly 4 options labeled A, B, C, D
 - Every question must include an "answer" and "explanation" field
 
