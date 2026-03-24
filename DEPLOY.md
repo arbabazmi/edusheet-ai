@@ -46,42 +46,14 @@ You create one IAM role, store its ARN in GitHub, and the pipeline assumes it au
 
 > For simplicity, you can attach `AdministratorAccess` instead of all the above.
 
-Note the role ARN — it looks like `arn:aws:iam::123456789012:role/YourRoleName`.
+The role has already been created as **`edusheet-ai-GitHubActionsDeployRole`**.
 
-**Or use this AWS CLI command to create the trust policy:**
-```bash
-# Replace YOUR_GITHUB_USERNAME and YOUR_AWS_ACCOUNT_ID
-cat > trust-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:YOUR_GITHUB_USERNAME/edusheet-ai:*"
-        },
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        }
-      }
-    }
-  ]
-}
-EOF
-
-aws iam create-role \
-  --role-name edusheet-github-actions-deploy \
-  --assume-role-policy-document file://trust-policy.json
-
-aws iam attach-role-policy \
-  --role-name edusheet-github-actions-deploy \
-  --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
+Its ARN follows this pattern:
 ```
+arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/edusheet-ai-GitHubActionsDeployRole
+```
+Replace `YOUR_AWS_ACCOUNT_ID` with your 12-digit AWS account ID — this is the value
+you store in the `AWS_DEPLOY_ROLE_ARN` secret (see Step 3).
 
 ---
 
@@ -105,7 +77,7 @@ Go to your GitHub repo → **Settings → Secrets and variables → Actions**.
 
 | Secret name | Value | Where to find it |
 |---|---|---|
-| `AWS_DEPLOY_ROLE_ARN` | `arn:aws:iam::123456789012:role/edusheet-github-actions-deploy` | From Step 1 |
+| `AWS_DEPLOY_ROLE_ARN` | `arn:aws:iam::123456789012:role/edusheet-ai-GitHubActionsDeployRole` | From Step 1 |
 | `ANTHROPIC_API_KEY_DEV` | `sk-ant-...` | [console.anthropic.com](https://console.anthropic.com) |
 | `ANTHROPIC_API_KEY_STAGING` | `sk-ant-...` | Same |
 | `ANTHROPIC_API_KEY_PROD` | `sk-ant-...` | Same |
