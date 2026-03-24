@@ -308,6 +308,19 @@ function showResults(data, requestedAnswerKey, selectedFormat) {
     downloadButtons.appendChild(answerKeyBtn);
   }
 
+  /* Solve Online button — always shown when a worksheetId is available */
+  if (metadata && metadata.id) {
+    const solveBtn = document.createElement('button');
+    solveBtn.type = 'button';
+    solveBtn.className = 'btn btn--solve download-btn';
+    solveBtn.textContent = 'Solve Online';
+    solveBtn.setAttribute('role', 'listitem');
+    solveBtn.addEventListener('click', () => {
+      window.open(`/solve.html?id=${metadata.id}`, '_blank', 'noopener,noreferrer');
+    });
+    downloadButtons.appendChild(solveBtn);
+  }
+
   loadingSection.hidden = true;
   formSection.hidden    = true;
   errorSection.hidden   = true;

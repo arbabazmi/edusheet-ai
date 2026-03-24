@@ -14,7 +14,7 @@
 import 'dotenv/config';
 import express from 'express';
 import { randomUUID } from 'crypto';
-import { mkdirSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -70,7 +70,8 @@ app.post('/api/generate', async (req, res) => {
     } = validated;
     const ext = FORMAT_EXT[format];
     const uuid = randomUUID();
-    const outputDir = LOCAL_FILES_DIR;
+    const outputDir = join(LOCAL_FILES_DIR, uuid);
+    mkdirSync(outputDir, { recursive: true });
 
     // Shared export options (including optional student details)
     const exportOpts = {
@@ -88,7 +89,24 @@ app.post('/api/generate', async (req, res) => {
       includeAnswerKey: false,
     });
     const worksheetFilename = worksheetPaths[0].split(/[\\/]/).pop();
-    const worksheetKey = `local/${worksheetFilename}`;
+    const worksheetKey = `local/${uuid}/${worksheetFilename}`;
+
+    // Save solve-data.json for the online solve feature
+    const solveData = {
+      worksheetId: uuid,
+      generatedAt: new Date().toISOString(),
+      grade,
+      subject,
+      topic,
+      difficulty,
+      estimatedTime: worksheet.estimatedTime || '20 minutes',
+      timerSeconds: typeof worksheet.estimatedTime === 'string'
+        ? (parseInt(worksheet.estimatedTime, 10) || 20) * 60
+        : 1200,
+      totalPoints: worksheet.totalPoints,
+      questions: worksheet.questions,
+    };
+    writeFileSync(join(outputDir, 'solve-data.json'), JSON.stringify(solveData, null, 2));
 
     // Export answer key if requested
     let answerKeyKey = null;
@@ -96,7 +114,7 @@ app.post('/api/generate', async (req, res) => {
       const answerKeyPaths = await exportAnswerKey(worksheet, exportOpts);
       if (answerKeyPaths.length > 0) {
         const answerKeyFilename = answerKeyPaths[0].split(/[\\/]/).pop();
-        answerKeyKey = `local/${answerKeyFilename}`;
+        answerKeyKey = `local/${uuid}/${answerKeyFilename}`;
       }
     }
 
@@ -106,6 +124,7 @@ app.post('/api/generate', async (req, res) => {
       answerKeyKey,
       metadata: {
         id: uuid,
+        solveUrl: `/solve.html?id=${uuid}`,
         generatedAt: new Date().toISOString(),
         grade, subject, topic, difficulty, questionCount, format,
       },
@@ -125,6 +144,62 @@ app.get('/api/download', (req, res) => {
   // Return a direct local URL — app.js will open this to trigger the download
   const downloadUrl = `http://localhost:${PORT}/local-files/${key.replace('local/', '')}`;
   res.json({ downloadUrl });
+});
+
+// ── Lazy-load solve/submit handlers ───────────────────────────────────────────
+let _solveHandler;
+let _submitHandler;
+
+/**
+ * Returns the solveHandler function, importing it on first call.
+ * @returns {Promise<Function>}
+ */
+const getSolveHandler = async () => {
+  if (!_solveHandler) {
+    const mod = await import('./backend/handlers/solveHandler.js');
+    _solveHandler = mod.handler;
+  }
+  return _solveHandler;
+};
+
+/**
+ * Returns the submitHandler function, importing it on first call.
+ * @returns {Promise<Function>}
+ */
+const getSubmitHandler = async () => {
+  if (!_submitHandler) {
+    const mod = await import('./backend/handlers/submitHandler.js');
+    _submitHandler = mod.handler;
+  }
+  return _submitHandler;
+};
+
+// ── GET /api/solve/:worksheetId ────────────────────────────────────────────────
+app.get('/api/solve/:worksheetId', async (req, res) => {
+  try {
+    const fn = await getSolveHandler();
+    const result = await fn(
+      { httpMethod: 'GET', pathParameters: { worksheetId: req.params.worksheetId } },
+      {},
+    );
+    res.status(result.statusCode).json(JSON.parse(result.body));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/submit ───────────────────────────────────────────────────────────
+app.post('/api/submit', async (req, res) => {
+  try {
+    const fn = await getSubmitHandler();
+    const result = await fn(
+      { httpMethod: 'POST', body: JSON.stringify(req.body) },
+      {},
+    );
+    res.status(result.statusCode).json(JSON.parse(result.body));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Fallback for SPA
