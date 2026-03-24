@@ -1,6 +1,8 @@
+import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
@@ -59,25 +61,34 @@ export class EduSheetAiStack extends cdk.Stack {
     });
     frontendBucket.grantRead(oai);
 
-    // ── SSM: Anthropic API key (pre-created manually as SecureString) ─────────
+    // ── SSM: Anthropic API key ─────────────────────────────────────────────────
     const anthropicKeyParam = ssm.StringParameter.fromSecureStringParameterAttributes(
       this, 'AnthropicApiKey',
-      {
-        parameterName: `/edusheet/${appEnv}/anthropic-api-key`,
-      }
+      { parameterName: `/edusheet/${appEnv}/anthropic-api-key` }
     );
 
+    // Shared esbuild bundling options — bundles handler + all src/ imports into
+    // a single CJS file. @aws-sdk/* is excluded (provided by the Lambda runtime).
+    // CJS output avoids the "Cannot use import statement outside a module" error
+    // that occurs when Lambda receives an unbundled ESM file without package.json.
+    const bundling = {
+      format: OutputFormat.CJS,
+      target: 'node20',
+      externalModules: ['@aws-sdk/*', 'typescript', 'puppeteer'],
+      minify: true,
+      sourceMap: false,
+    };
+
     // ── Lambda: Generate handler ───────────────────────────────────────────────
-    const generateFn = new lambda.Function(this, 'GenerateFunction', {
+    const generateFn = new NodejsFunction(this, 'GenerateFunction', {
       functionName: `edusheet-${appEnv}-lambda-generate`,
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_20_X,
       architecture: lambda.Architecture.ARM_64,
-      handler: 'generateHandler.handler',
-      code: lambda.Code.fromAsset('../../backend/handlers', {
-        exclude: ['*.test.js', '*.spec.js'],
-      }),
+      entry: path.join(__dirname, '../../../backend/handlers/generateHandler.js'),
+      handler: 'handler',
       memorySize: 1024,
       timeout: cdk.Duration.seconds(60),
+      bundling,
       environment: {
         NODE_ENV: appEnv,
         WORKSHEET_BUCKET_NAME: worksheetBucket.bucketName,
@@ -88,24 +99,20 @@ export class EduSheetAiStack extends cdk.Stack {
       description: `edusheet-${appEnv}-lambda-generate — worksheet generation`,
     });
 
-    // Grant S3 permissions to generate function
     worksheetBucket.grantPut(generateFn);
     worksheetBucket.grantRead(generateFn);
-
-    // Grant SSM read permission so the function can fetch the API key at runtime
     anthropicKeyParam.grantRead(generateFn);
 
     // ── Lambda: Download handler ───────────────────────────────────────────────
-    const downloadFn = new lambda.Function(this, 'DownloadFunction', {
+    const downloadFn = new NodejsFunction(this, 'DownloadFunction', {
       functionName: `edusheet-${appEnv}-lambda-download`,
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_20_X,
       architecture: lambda.Architecture.ARM_64,
-      handler: 'downloadHandler.handler',
-      code: lambda.Code.fromAsset('../../backend/handlers', {
-        exclude: ['*.test.js', '*.spec.js'],
-      }),
+      entry: path.join(__dirname, '../../../backend/handlers/downloadHandler.js'),
+      handler: 'handler',
       memorySize: 256,
       timeout: cdk.Duration.seconds(30),
+      bundling,
       environment: {
         NODE_ENV: appEnv,
         WORKSHEET_BUCKET_NAME: worksheetBucket.bucketName,
@@ -114,7 +121,6 @@ export class EduSheetAiStack extends cdk.Stack {
       description: `edusheet-${appEnv}-lambda-download — presigned URL generation`,
     });
 
-    // Grant S3 read + presigned URL generation to download function
     worksheetBucket.grantRead(downloadFn);
     downloadFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['s3:GetObject'],
@@ -141,7 +147,6 @@ export class EduSheetAiStack extends cdk.Stack {
 
     const apiResource = api.root.addResource('api');
 
-    // POST /api/generate
     const generateResource = apiResource.addResource('generate');
     generateResource.addMethod(
       'POST',
@@ -149,7 +154,6 @@ export class EduSheetAiStack extends cdk.Stack {
       { apiKeyRequired: false }
     );
 
-    // GET /api/download
     const downloadResource = apiResource.addResource('download');
     downloadResource.addMethod(
       'GET',
@@ -158,8 +162,6 @@ export class EduSheetAiStack extends cdk.Stack {
     );
 
     // ── CloudFront distribution ────────────────────────────────────────────────
-    // S3BucketOrigin.withOriginAccessControl() creates and attaches an OAC automatically,
-    // granting CloudFront read access to the private bucket without making it public.
     const apiDomainName = `${api.restApiId}.execute-api.${this.region}.amazonaws.com`;
 
     const distribution = new cloudfront.Distribution(this, 'CloudFrontDistribution', {
@@ -184,26 +186,16 @@ export class EduSheetAiStack extends cdk.Stack {
         },
       },
       errorResponses: [
-        {
-          httpStatus: 403,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-          ttl: cdk.Duration.seconds(0),
-        },
-        {
-          httpStatus: 404,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-          ttl: cdk.Duration.seconds(0),
-        },
+        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(0) },
+        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(0) },
       ],
     });
 
     // ── Outputs ────────────────────────────────────────────────────────────────
-    new cdk.CfnOutput(this, 'CloudFrontUrl', {
+    new cdk.CfnOutput(this, 'FrontendUrl', {
       value: `https://${distribution.distributionDomainName}`,
-      description: 'CloudFront distribution URL',
-      exportName: `edusheet-${appEnv}-cloudfront-url`,
+      description: 'CloudFront URL (open this in your browser)',
+      exportName: `edusheet-${appEnv}-frontend-url`,
     });
 
     new cdk.CfnOutput(this, 'DistributionId', {

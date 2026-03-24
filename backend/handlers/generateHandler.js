@@ -15,6 +15,7 @@
  */
 
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { readFileSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { validateGenerateBody } from '../middleware/validator.js';
@@ -25,8 +26,34 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 };
 
-const s3 = new S3Client({});
+const s3   = new S3Client({});
+const ssm  = new SSMClient({});
 const BUCKET = process.env.WORKSHEET_BUCKET_NAME;
+
+// Cache the API key in module scope so it is only fetched once per cold start.
+let _apiKeyLoaded = false;
+
+/**
+ * Fetches the Anthropic API key from SSM Parameter Store on first invocation
+ * and sets it as process.env.ANTHROPIC_API_KEY so client.js can read it.
+ * Skipped when the env var is already set (local dev / unit tests).
+ */
+async function loadApiKey() {
+  if (_apiKeyLoaded || process.env.ANTHROPIC_API_KEY) {
+    _apiKeyLoaded = true;
+    return;
+  }
+  const paramName = process.env.SSM_PARAM_NAME;
+  if (!paramName) {
+    throw new Error('SSM_PARAM_NAME env var is not set.');
+  }
+  const { Parameter } = await ssm.send(new GetParameterCommand({
+    Name: paramName,
+    WithDecryption: true,
+  }));
+  process.env.ANTHROPIC_API_KEY = Parameter.Value;
+  _apiKeyLoaded = true;
+}
 
 // Lazy import helpers — only loaded on first real invocation
 let _generateWorksheet;
@@ -117,6 +144,9 @@ export const handler = async (event, context) => {
   }
 
   try {
+    // 0. Ensure API key is available (fetches from SSM on first cold start)
+    await loadApiKey();
+
     // 1. Parse and validate request body
     let body;
     try {
@@ -140,7 +170,20 @@ export const handler = async (event, context) => {
       };
     }
 
-    const { grade, subject, topic, difficulty, questionCount, format, includeAnswerKey } = validated;
+    const {
+      grade,
+      subject,
+      topic,
+      difficulty,
+      questionCount,
+      format,
+      includeAnswerKey,
+      studentName,
+      worksheetDate,
+      teacherName,
+      period,
+      className,
+    } = validated;
     const ext = FORMAT_EXT[format];
     const uuid = randomUUID();
     const now = new Date();
@@ -158,6 +201,11 @@ export const handler = async (event, context) => {
       grade, subject, topic, difficulty,
       format,
       includeAnswerKey: false, // answer key handled separately below
+      studentName,
+      worksheetDate,
+      teacherName,
+      period,
+      className,
       outputDir,
     });
     const worksheetLocalPath = worksheetPaths[0];
@@ -173,6 +221,11 @@ export const handler = async (event, context) => {
       const answerKeyPaths = await exportAnswerKey(worksheet, {
         grade, subject, topic, difficulty,
         format,
+        studentName,
+        worksheetDate,
+        teacherName,
+        period,
+        className,
         outputDir,
       });
       if (answerKeyPaths.length > 0) {
@@ -191,6 +244,13 @@ export const handler = async (event, context) => {
       difficulty,
       questionCount,
       format,
+      studentDetails: {
+        studentName,
+        worksheetDate,
+        teacherName,
+        period,
+        className,
+      },
       expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     };
 

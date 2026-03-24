@@ -9,6 +9,7 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { mockClient } from 'aws-sdk-client-mock';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
@@ -20,9 +21,10 @@ const sampleWorksheet = JSON.parse(
   readFileSync(join(__dirname, '../fixtures/sampleWorksheet.json'), 'utf-8')
 );
 
-// ─── S3 mock ──────────────────────────────────────────────────────────────────
+// ─── AWS SDK mocks ────────────────────────────────────────────────────────────
 
-const s3Mock = mockClient(S3Client);
+const s3Mock  = mockClient(S3Client);
+const ssmMock = mockClient(SSMClient);
 
 // ─── Module mocks (must all appear before any dynamic import()) ───────────────
 
@@ -76,13 +78,22 @@ const validBody = {
   questionCount: 10,
   format: 'PDF',
   includeAnswerKey: true,
+  studentName: 'Ava Johnson',
+  worksheetDate: '2026-03-24',
+  teacherName: 'Ms. Carter',
+  period: '2nd',
+  className: 'Algebra Readiness',
 };
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   s3Mock.reset();
+  ssmMock.reset();
   jest.clearAllMocks();
+
+  // Set ANTHROPIC_API_KEY directly so loadApiKey() short-circuits without SSM
+  process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
 
   // Restore default mock implementations after clearAllMocks
   generateWorksheet.mockResolvedValue(sampleWorksheet);
@@ -206,9 +217,35 @@ describe('generateHandler — valid request', () => {
     expect(metadata.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  it('metadata contains optional student details object', async () => {
+    const result = await handler(mockEvent(validBody), mockContext);
+    const { metadata } = JSON.parse(result.body);
+    expect(metadata.studentDetails).toMatchObject({
+      studentName: 'Ava Johnson',
+      worksheetDate: '2026-03-24',
+      teacherName: 'Ms. Carter',
+      period: '2nd',
+      className: 'Algebra Readiness',
+    });
+  });
+
   it('CORS headers present on 200 response', async () => {
     const result = await handler(mockEvent(validBody), mockContext);
     expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
+  });
+
+  it('passes optional student details into worksheet export options', async () => {
+    await handler(mockEvent(validBody), mockContext);
+    expect(exportWorksheet).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        studentName: 'Ava Johnson',
+        worksheetDate: '2026-03-24',
+        teacherName: 'Ms. Carter',
+        period: '2nd',
+        className: 'Algebra Readiness',
+      })
+    );
   });
 
 });
