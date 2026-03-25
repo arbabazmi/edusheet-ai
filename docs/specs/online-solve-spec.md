@@ -43,6 +43,10 @@ Then the response is 200 with totalScore, totalPoints, percentage, timeTaken, ti
 results array with one entry per question containing correct, studentAnswer, correctAnswer,
 explanation, pointsEarned, and pointsPossible
 
+Given the student is logged in and solving in onsite mode
+When POST /api/submit completes scoring successfully
+Then the scored result is persisted and linked to that student identity for future reporting
+
 Given a worksheetId that does not exist in worksheets-local/
 When GET /api/solve/:worksheetId is called
 Then the response is 404 with { error: "Worksheet not found." }
@@ -61,15 +65,19 @@ And the generate response includes worksheetId in the metadata object
 - Local dev: filesystem only (worksheets-local/{uuid}/solve-data.json)
 - AWS (deferred): S3 GetObjectCommand on learnfyra-{env}-s3-worksheets bucket,
   key pattern worksheets/{year}/{month}/{day}/{uuid}/solve-data.json
+- Local dev (logged-in onsite submissions): filesystem write for persisted results at
+  worksheets-local/{worksheetId}/results/{studentId}/{resultId}.json
+- AWS (deferred, logged-in onsite submissions): S3 PutObjectCommand to
+  worksheets/{year}/{month}/{day}/{worksheetId}/results/{studentId}/{resultId}.json
 - Lambda functions: learnfyra-solve (128 MB, 10s timeout), learnfyra-submit (256 MB, 15s timeout)
   — handlers are written Lambda-ready but NOT deployed in this phase
 
 ### Out of Scope
-- Persisting student results anywhere (no database, no S3 results storage)
+- Persisting results for guest users or offline mode attempts
 - Teacher dashboard or result aggregation
 - AWS Lambda deployment of solveHandler and submitHandler (Phase 5, separate branch)
 - CDK stack changes (deferred)
-- Student authentication or login
+- Implementing student authentication or login flows in this module (auth is handled by the auth module; this module consumes logged-in user context)
 - Re-attempt tracking (the "Try Again" button simply reloads solve.html)
 - Partial scoring for short-answer (either full points or zero — no partial credit)
 
@@ -81,11 +89,11 @@ And the generate response includes worksheetId in the metadata object
 
 ### Open Questions
 
-OQ-1: The sampleWorksheet.json fixture stores multiple-choice answers as "B. 56" (letter plus
-text) rather than just "B". The CLAUDE.md spec and scoring rules assume the answer field holds
-only the letter. DEV must confirm which format Claude actually returns and normalise consistently
-in scorer.js. The spec below assumes the answer field may contain either "B" or "B. 56" and that
-the scorer extracts just the leading letter for comparison.
+OQ-1: RESOLVED — Multiple-choice answers are stored in "letter+text" format (for example,
+"B. 56") based on the generation prompt example and existing fixtures. scorer.js must normalize
+both the stored answer and student input via extractOptionLetter() so comparison is letter-only.
+This keeps scoring dual-tolerant for stored values like "B. 56" and student inputs like "B" or
+"B. 56". No migration is required for existing worksheets.
 
 OQ-2: The matching question type is specified in CLAUDE.md but does not appear in
 sampleWorksheet.json and has no fixture data. DEV should implement the scoring rule but QA
@@ -105,6 +113,11 @@ OQ-5: The generate response currently returns worksheetKey as "local/{filename}"
 return the worksheetId as a top-level field. solve.html needs the worksheetId to construct the
 /api/solve/:id URL. DEV must add worksheetId as a top-level field on the generate response
 alongside worksheetKey.
+
+OQ-6: Auth context handoff for submit persistence must be finalised. Current proposal:
+submitHandler reads student identity from event.requestContext.authorizer (Lambda) and from
+req.user injected by auth middleware in local server mode. If no valid identity is present,
+the submission is treated as guest for persistence purposes and no result record is written.
 
 ---
 
@@ -467,6 +480,11 @@ backend/handlers/submitHandler.js
 }
 ```
 
+Auth context requirement (not in JSON body):
+- Logged-in onsite persistence requires authenticated user context.
+- Lambda path: event.requestContext.authorizer contains user identity (studentId/userId).
+- Local dev path: req.user is attached by auth middleware and forwarded into the handler event.
+
 Validation rules:
 - worksheetId: required, non-empty string
 - answers: required, must be an array (may be empty)
@@ -474,9 +492,15 @@ Validation rules:
 - timed: optional boolean, defaults to false if absent
 - studentName: optional string, trimmed, max 80 chars, stored nowhere (only echoed if needed)
 - Each answers entry: number must be an integer >= 1, answer must be a string or object
+- Result persistence rule: persist only when authenticated identity exists and solve mode is onsite.
 
 ### Response: 200 Success
-Full ResultObject as defined in Section 2. All CORS headers included.
+Full ResultObject as defined in Section 2 plus persistence metadata. All CORS headers included.
+
+Additional response fields:
+- resultId: string | null
+  - Populated for logged-in onsite submissions when persistence succeeds.
+  - null for guest submissions or when onsite persistence is not applicable.
 
 ### Response: 400 Bad Request
 ```json
@@ -510,6 +534,13 @@ handler(event, context)
     read solve-data.json (local or S3)
     parse JSON
     call buildResult(worksheet, answers, timeTaken, timed)
+    derive auth identity from authorizer/req.user
+    if identity exists and mode is onsite
+      generate resultId
+      persist result payload to local file or S3 by environment
+      attach resultId to response
+    else
+      set resultId = null
     return 200 with result
   catch ENOENT / NoSuchKey
     return 404
@@ -1144,6 +1175,12 @@ HAPPY PATH (mock readFileSync to return solveData JSON, mock buildResult to retu
 - CORS headers present on 200 response
 - calls buildResult with correct arguments (worksheetId-loaded worksheet, answers, timeTaken, timed)
 
+PERSISTENCE BRANCHING
+- logged-in onsite context: returns 200 and response contains non-null resultId
+- logged-in onsite context: persists one result record in expected local results path
+- guest/no-auth context: returns 200 and response contains resultId as null
+- guest/no-auth context: does not write persisted result record
+
 400 VALIDATION
 - returns 400 when worksheetId is missing from body
 - returns 400 when answers field is absent
@@ -1180,6 +1217,8 @@ Test cases:
 - GET /api/solve/nonexistent-uuid returns 404
 - POST /api/submit with valid body against TEST_UUID returns 200
 - POST /api/submit response has totalScore, totalPoints, percentage, results
+- POST /api/submit with logged-in onsite context persists a result and returns non-null resultId
+- POST /api/submit without auth context returns resultId null and does not persist a result
 - POST /api/submit with empty answers returns 200 with totalScore 0
 - POST /api/submit with all correct answers returns percentage 100
 - POST /api/submit with all wrong answers returns totalScore 0
@@ -1230,10 +1269,9 @@ Files to CREATE:
 
 Before DEV begins implementation, the following must be decided:
 
-OQ-1 (BLOCKING): Confirm whether Claude returns multiple-choice answers as "B" or "B. 56".
-  Resolution owner: DEV (inspect a real API response or review promptBuilder.js)
-  If "B. 56": scorer.js must use extractOptionLetter on BOTH sides.
-  If "B": scorer.js only needs extractOptionLetter on student-submitted side as a safety guard.
+OQ-1 (RESOLVED): Canonical stored format is "letter+text" (for example, "B. 56").
+  scorer.js must call extractOptionLetter on BOTH stored answers and student answers.
+  Backward compatibility: accept both "B" and "B. 56" as student input.
 
 OQ-4 (BLOCKING): Confirm server.js directory structure change does not break /api/download.
   Resolution owner: DEV (local test before merging)
@@ -1245,3 +1283,6 @@ OQ-5 (BLOCKING): Confirm worksheetId is added to generate response before app.js
 OQ-2 (NON-BLOCKING): Matching question fixture — QA can hand-craft this.
 
 OQ-3 (NON-BLOCKING): timerSeconds derivation — formula specified above, DEV implements.
+
+OQ-6 (BLOCKING): Finalize exact auth-to-handler identity contract for local and Lambda paths.
+  Resolution owner: Architect + DEV (align with auth module contract before implementation)
