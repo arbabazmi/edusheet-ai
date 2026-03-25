@@ -1,20 +1,29 @@
 # Learnfyra — Deployment Guide
 
-Deployments are driven by **GitHub Actions**. Pushing to a branch triggers the
-corresponding pipeline automatically. No local AWS credentials or CDK CLI needed.
+Deployments are driven by **GitHub Actions**. CI still runs automatically on
+push and pull request events, while environment deployments are controlled by
+workflow policy. No local AWS credentials or CDK CLI needed for normal deploys.
 
 ---
 
 ## How Deployments Work
 
-| Branch pushed to | Pipeline triggered | Environment |
+| Action | Pipeline triggered | Environment |
 |---|---|---|
-| `develop` | `deploy-dev.yml` | Dev |
-| `staging` | `deploy-staging.yml` | Staging |
-| `main` | `deploy-prod.yml` (needs manual approval) | Production |
+| Manually run from GitHub Actions | `deploy-dev.yml` | Dev |
+| Push to `staging` | `deploy-staging.yml` | Staging |
+| Manually run from GitHub Actions | `deploy-prod.yml` (still needs manual approval) | Production |
 
 Each pipeline: runs tests → assumes IAM role via OIDC → deploys CDK stack →
 syncs frontend to S3 → invalidates CloudFront cache.
+
+Current operating policy:
+
+- Dev deploys are manual-only.
+- Staging still auto-deploys on push to `staging`.
+- Production no longer auto-deploys on push to `main`.
+- Production workflow remains available for intentional manual runs and still
+  requires the GitHub `production` environment approval gate.
 
 ---
 
@@ -100,7 +109,7 @@ Go to **Settings → Environments** and create three environments:
 
 | Environment name | Purpose | Protection rules |
 |---|---|---|
-| `dev` | Development deploys | None (auto-deploys on push to `develop`) |
+| `dev` | Development deploys | None (manual workflow only) |
 | `staging` | Staging deploys | None (auto-deploys on push to `staging`) |
 | `production` | Production deploys | **Add required reviewers** (yourself or your team) |
 
@@ -111,13 +120,13 @@ before `deploy-prod.yml` can deploy to AWS.
 
 ## Deploying
 
-### First deploy to dev
-```bash
-git checkout -b develop
-git push origin develop
-```
-The `deploy-dev.yml` pipeline runs automatically. Watch it at:
-`https://github.com/YOUR_GITHUB_USERNAME/learnfyra/actions`
+### Deploy to dev manually
+1. Open **GitHub → Actions → Deploy — Dev**.
+2. Click **Run workflow**.
+3. Select the branch you want to deploy from.
+4. Start the workflow and monitor the job output.
+
+This is now the only supported path for dev deployment.
 
 ### Promote to staging
 ```bash
@@ -126,13 +135,18 @@ git merge develop
 git push origin staging
 ```
 
-### Promote to production
-```bash
-git checkout main
-git merge staging
-git push origin main
-# → GitHub will pause and ask for manual approval before deploying
-```
+The `deploy-staging.yml` pipeline still runs automatically on push to `staging`.
+
+### Production workflow
+
+Production no longer auto-deploys from pushes to `main`.
+
+If you intentionally decide to deploy prod later:
+
+1. Open **GitHub → Actions → Deploy — Production**.
+2. Click **Run workflow**.
+3. Select the branch you want to deploy from.
+4. Approve the `production` environment gate when GitHub prompts for approval.
 
 ---
 
@@ -155,9 +169,9 @@ All AWS resources follow `learnfyra-{env}-{service-type}`:
 
 ```
 ci.yml            Every PR → tests + coverage gate + CDK synth dry run
-deploy-dev.yml    Push to develop → test → deploy dev
+deploy-dev.yml    Manual run → test → deploy dev
 deploy-staging.yml Push to staging → test + coverage → deploy staging
-deploy-prod.yml   Push to main → test + coverage → manual approval → deploy prod
+deploy-prod.yml   Manual run → test + coverage → manual approval → deploy prod
 ```
 
 Each deploy pipeline also writes the Anthropic API key to SSM automatically,
