@@ -86,6 +86,36 @@ function showError(msg) {
   errorSection.hidden    = false;
 }
 
+/**
+ * Safely parses an API response as JSON and gives a clear error when the
+ * response is HTML/non-JSON (commonly caused by wrong dev server/proxy setup).
+ * @param {Response} res
+ * @param {string} fallbackContext
+ * @returns {Promise<any>}
+ */
+async function parseApiResponse(res, fallbackContext) {
+  const contentType = res.headers.get('content-type') || '';
+  const text = await res.text();
+
+  if (contentType.toLowerCase().includes('application/json')) {
+    try {
+      return JSON.parse(text || '{}');
+    } catch {
+      throw new Error(`${fallbackContext}: server returned invalid JSON.`);
+    }
+  }
+
+  try {
+    return JSON.parse(text || '{}');
+  } catch {
+    const looksLikeHtml = /^\s*<!doctype html/i.test(text) || /^\s*<html/i.test(text);
+    if (looksLikeHtml) {
+      throw new Error(`${fallbackContext}: API returned HTML instead of JSON. Make sure you opened the app from the Node server (http://localhost:3000), not a static/dev frontend server.`);
+    }
+    throw new Error(`${fallbackContext}: unexpected non-JSON response from API.`);
+  }
+}
+
 /* =============================================================
    Fetch Worksheet
    ============================================================= */
@@ -105,7 +135,7 @@ async function loadWorksheet() {
 
   try {
     const res = await fetch(`/api/solve/${encodeURIComponent(id)}`);
-    const data = await res.json();
+    const data = await parseApiResponse(res, 'Could not load worksheet');
 
     if (!res.ok) {
       showError(data.error || `Could not load worksheet (HTTP ${res.status}).`);
@@ -546,7 +576,7 @@ async function submitAnswers(autoSubmit) {
       }),
     });
 
-    const result = await res.json();
+    const result = await parseApiResponse(res, 'Submission failed');
 
     if (!res.ok) {
       throw new Error(result.error || `Server error (${res.status})`);

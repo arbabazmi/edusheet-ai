@@ -147,7 +147,7 @@ app.get('/api/download', (req, res) => {
 });
 
 // ── OPTIONS preflight for all /api/* routes ───────────────────────────────────
-app.options('/api/*', (req, res) => {
+app.options(/^\/api\/.*$/, (req, res) => {
   res.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
   res.set('Access-Control-Allow-Headers', 'Content-Type,Authorization');
   res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -488,8 +488,17 @@ app.get('/api/rewards/class/:id', async (req, res) => {
   }
 });
 
-// Fallback for SPA
-app.get('/{*path}', (_req, res) => {
+// JSON fallback for unknown API routes (prevents HTML fallback responses)
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    res.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
+    return res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
+  }
+  return next();
+});
+
+// Fallback for SPA (non-API paths only)
+app.get(/^(?!\/api(?:\/|$)).*/, (_req, res) => {
   res.sendFile(join(__dirname, 'frontend', 'index.html'));
 });
 

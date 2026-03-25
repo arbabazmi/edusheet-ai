@@ -25,7 +25,7 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Coverage gate (≥80%)
+      - name: Coverage gate (>=80%)
         run: |
           npm run test:coverage -- \
             --coverageThreshold='{"global":{"statements":80,"branches":80,"functions":80,"lines":80}}'
@@ -77,7 +77,13 @@ jobs:
       - name: Deploy CDK stack — prod
         run: |
           cd infra/cdk
-          npx cdk deploy --context env=prod \
+          npx cdk deploy \
+            --context env=prod \
+            --context enableCustomDomains=true \
+            --context rootDomainName=learnfyra.com \
+            --context hostedZoneId=Z027880820G9W7LYJRE7H \
+            --context cloudFrontCertificateArn=arn:aws:acm:us-east-1:796929287685:certificate/abb068ee-3a48-4546-bb30-b494d7fe1ea7 \
+            --context apiCertificateArn=arn:aws:acm:us-east-1:796929287685:certificate/abb068ee-3a48-4546-bb30-b494d7fe1ea7 \
             --require-approval never \
             --outputs-file cdk-outputs.json
         env:

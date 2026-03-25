@@ -150,6 +150,82 @@ If you intentionally decide to deploy prod later:
 
 ---
 
+## Manual Deploy Commands (Local Terminal)
+
+Use these when you want to deploy directly from your machine without going through GitHub Actions.
+Requires: AWS CLI configured with credentials for account `796929287685`, and `cd infra/cdk` first.
+
+### Dev (deployed — run again after code changes)
+```powershell
+cd infra/cdk
+npx cdk deploy `
+  --context env=dev `
+  --context enableCustomDomains=true `
+  --context rootDomainName=learnfyra.com `
+  --context hostedZoneId=Z027880820G9W7LYJRE7H `
+  --context apiCertificateArn=arn:aws:acm:us-east-1:796929287685:certificate/abb068ee-3a48-4546-bb30-b494d7fe1ea7 `
+  --require-approval never `
+  --outputs-file cdk-outputs.json
+```
+After deploy, sync frontend:
+```powershell
+aws s3 sync ../../frontend/ s3://learnfyra-dev-s3-frontend/ --delete --region us-east-1
+```
+
+### QA / Staging (run when ready — creates web.qa / api.qa / admin.qa)
+```powershell
+cd infra/cdk
+npx cdk deploy `
+  --context env=staging `
+  --context enableCustomDomains=true `
+  --context rootDomainName=learnfyra.com `
+  --context hostedZoneId=Z027880820G9W7LYJRE7H `
+  --context cloudFrontCertificateArn=arn:aws:acm:us-east-1:796929287685:certificate/abb068ee-3a48-4546-bb30-b494d7fe1ea7 `
+  --context apiCertificateArn=arn:aws:acm:us-east-1:796929287685:certificate/abb068ee-3a48-4546-bb30-b494d7fe1ea7 `
+  --require-approval never `
+  --outputs-file cdk-outputs.json
+```
+After deploy, sync frontend + invalidate CloudFront:
+```powershell
+$bucket = (Get-Content cdk-outputs.json | ConvertFrom-Json).'LearnfyraStack-staging'.FrontendBucketName
+$distId = (Get-Content cdk-outputs.json | ConvertFrom-Json).'LearnfyraStack-staging'.DistributionId
+aws s3 sync ../../frontend/ s3://$bucket/ --delete --region us-east-1
+aws cloudfront create-invalidation --distribution-id $distId --paths "/*"
+```
+
+### Production (run when ready — creates learnfyra.com / api.learnfyra.com / admin.learnfyra.com)
+```powershell
+cd infra/cdk
+npx cdk deploy `
+  --context env=prod `
+  --context enableCustomDomains=true `
+  --context rootDomainName=learnfyra.com `
+  --context hostedZoneId=Z027880820G9W7LYJRE7H `
+  --context cloudFrontCertificateArn=arn:aws:acm:us-east-1:796929287685:certificate/abb068ee-3a48-4546-bb30-b494d7fe1ea7 `
+  --context apiCertificateArn=arn:aws:acm:us-east-1:796929287685:certificate/abb068ee-3a48-4546-bb30-b494d7fe1ea7 `
+  --require-approval never `
+  --outputs-file cdk-outputs.json
+```
+After deploy, sync frontend + invalidate CloudFront:
+```powershell
+$bucket = (Get-Content cdk-outputs.json | ConvertFrom-Json).'LearnfyraStack-prod'.FrontendBucketName
+$distId = (Get-Content cdk-outputs.json | ConvertFrom-Json).'LearnfyraStack-prod'.DistributionId
+aws s3 sync ../../frontend/ s3://$bucket/ --delete --region us-east-1
+aws cloudfront create-invalidation --distribution-id $distId --paths "/*"
+```
+
+### Dev Resources — Live (Deployed March 25, 2026)
+| Resource | URL |
+|---|---|
+| Frontend | `http://web.dev.learnfyra.com` |
+| API | `https://api.dev.learnfyra.com` |
+| Admin | `http://admin.dev.learnfyra.com` |
+| Auth | `https://auth.dev.learnfyra.com` |
+| API Gateway (direct) | `https://fcciuafjrj.execute-api.us-east-1.amazonaws.com/dev/` |
+| Frontend S3 (direct) | `http://learnfyra-dev-s3-frontend.s3-website-us-east-1.amazonaws.com` |
+
+---
+
 ## Resource Naming Convention
 
 All AWS resources follow `learnfyra-{env}-{service-type}`:
@@ -176,6 +252,24 @@ deploy-prod.yml   Manual run → test + coverage → manual approval → deploy 
 
 Each deploy pipeline also writes the Anthropic API key to SSM automatically,
 so you never need to touch SSM manually after the first bootstrap.
+
+---
+
+## Custom Domains (learnfyra.com)
+
+For environment subdomains and routing strategy, use:
+
+- docs/operations/domain-routing-plan-learnfyra-com.md
+
+CDK supports optional domain provisioning through context values:
+
+- enableCustomDomains
+- rootDomainName
+- hostedZoneId
+- cloudFrontCertificateArn
+- apiCertificateArn
+
+When `enableCustomDomains` is not provided, stack behavior remains unchanged.
 
 ---
 

@@ -6,12 +6,20 @@ import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
 export interface LearnfyraStackProps extends cdk.StackProps {
   appEnv: 'dev' | 'staging' | 'prod';
+  rootDomainName?: string;
+  hostedZoneId?: string;
+  enableCustomDomains?: boolean;
+  cloudFrontCertificateArn?: string;
+  apiCertificateArn?: string;
 }
 
 export class LearnfyraStack extends cdk.Stack {
@@ -19,10 +27,52 @@ export class LearnfyraStack extends cdk.Stack {
     super(scope, id, props);
 
     const { appEnv } = props;
+    const isDev = appEnv === 'dev';
     const isProd = appEnv === 'prod';
+    const dnsEnvLabel = appEnv === 'staging' ? 'qa' : appEnv;
+    const enableCustomDomains = props.enableCustomDomains ?? false;
     const removalPolicy = isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
     const tracingMode =
       isProd || appEnv === 'staging' ? lambda.Tracing.ACTIVE : lambda.Tracing.DISABLED;
+
+    const rootDomainName = props.rootDomainName;
+    const hostedZoneId = props.hostedZoneId;
+    const zone =
+      enableCustomDomains && rootDomainName && hostedZoneId
+        ? route53.HostedZone.fromHostedZoneAttributes(this, 'HostedZone', {
+            zoneName: rootDomainName,
+            hostedZoneId,
+          })
+        : undefined;
+
+    if (enableCustomDomains && (!rootDomainName || !hostedZoneId)) {
+      throw new Error(
+        'Custom domains enabled but rootDomainName/hostedZoneId not provided in stack props.'
+      );
+    }
+
+    const apiDomainName = isProd
+      ? `api.${rootDomainName}`
+      : `api.${dnsEnvLabel}.${rootDomainName}`;
+    const webDomainName = isProd
+      ? `${rootDomainName}`
+      : `web.${dnsEnvLabel}.${rootDomainName}`;
+    const adminDomainName = isProd
+      ? `admin.${rootDomainName}`
+      : `admin.${dnsEnvLabel}.${rootDomainName}`;
+    const authDomainName = `auth.dev.${rootDomainName}`;
+
+    let cloudFrontCertificate: acm.ICertificate | undefined;
+    if (enableCustomDomains && !isDev) {
+      if (!props.cloudFrontCertificateArn) {
+        throw new Error('Custom domains for CloudFront require cloudFrontCertificateArn.');
+      }
+      cloudFrontCertificate = acm.Certificate.fromCertificateArn(
+        this,
+        'CloudFrontCertificate',
+        props.cloudFrontCertificateArn
+      );
+    }
 
     // ── Tag all resources ─────────────────────────────────────────────────────
     cdk.Tags.of(this).add('Project', 'learnfyra');
@@ -52,14 +102,81 @@ export class LearnfyraStack extends cdk.Stack {
       bucketName: `learnfyra-${appEnv}-s3-frontend`,
       removalPolicy,
       autoDeleteObjects: !isProd,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      blockPublicAccess: isDev
+        ? new s3.BlockPublicAccess({
+            blockPublicAcls: false,
+            ignorePublicAcls: false,
+            blockPublicPolicy: false,
+            restrictPublicBuckets: false,
+          })
+        : s3.BlockPublicAccess.BLOCK_ALL,
+      publicReadAccess: isDev,
+      websiteIndexDocument: isDev ? 'index.html' : undefined,
+      websiteErrorDocument: isDev ? 'index.html' : undefined,
     });
 
-    // Origin Access Identity — grants CloudFront read access to the private bucket
-    const oai = new cloudfront.OriginAccessIdentity(this, 'FrontendOAI', {
-      comment: `OAI for learnfyra-${appEnv}-s3-frontend`,
+    // ── API Gateway ────────────────────────────────────────────────────────────
+    const api = new apigateway.RestApi(this, 'ApiGateway', {
+      restApiName: `learnfyra-${appEnv}-apigw`,
+      description: `Learnfyra API — ${appEnv}`,
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: ['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key'],
+      },
+      deployOptions: {
+        stageName: appEnv,
+        loggingLevel: apigateway.MethodLoggingLevel.INFO,
+        metricsEnabled: true,
+        throttlingRateLimit: isDev ? 2 : 10,
+        throttlingBurstLimit: isDev ? 5 : 20,
+      },
     });
-    frontendBucket.grantRead(oai);
+
+    let distribution: cloudfront.Distribution | undefined;
+
+    if (!isDev) {
+      // Origin Access Identity — grants CloudFront read access to the private bucket
+      const oai = new cloudfront.OriginAccessIdentity(this, 'FrontendOAI', {
+        comment: `OAI for learnfyra-${appEnv}-s3-frontend`,
+      });
+      frontendBucket.grantRead(oai);
+
+      // ── CloudFront distribution ──────────────────────────────────────────────
+      const apiDomainName = `${api.restApiId}.execute-api.${this.region}.amazonaws.com`;
+
+      distribution = new cloudfront.Distribution(this, 'CloudFrontDistribution', {
+        comment: `learnfyra-${appEnv}-cloudfront`,
+        defaultRootObject: 'index.html',
+        domainNames:
+          enableCustomDomains && rootDomainName
+            ? [webDomainName, adminDomainName]
+            : undefined,
+        certificate: cloudFrontCertificate,
+        defaultBehavior: {
+          origin: new origins.S3Origin(frontendBucket, { originAccessIdentity: oai }),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+        },
+        additionalBehaviors: {
+          '/api/*': {
+            origin: new origins.HttpOrigin(apiDomainName, {
+              originPath: `/${appEnv}`,
+            }),
+            viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
+            cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+            allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+            cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD_OPTIONS,
+            originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          },
+        },
+        errorResponses: [
+          { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(0) },
+          { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(0) },
+        ],
+      });
+    }
 
     // ── SSM: Anthropic API key ─────────────────────────────────────────────────
     const anthropicKeyParam = ssm.StringParameter.fromSecureStringParameterAttributes(
@@ -86,7 +203,7 @@ export class LearnfyraStack extends cdk.Stack {
       architecture: lambda.Architecture.ARM_64,
       entry: path.join(__dirname, '../../../backend/handlers/generateHandler.js'),
       handler: 'handler',
-      memorySize: 1024,
+      memorySize: isDev ? 512 : 1024,
       timeout: cdk.Duration.seconds(60),
       bundling,
       environment: {
@@ -127,24 +244,6 @@ export class LearnfyraStack extends cdk.Stack {
       resources: [worksheetBucket.arnForObjects('*')],
     }));
 
-    // ── API Gateway ────────────────────────────────────────────────────────────
-    const api = new apigateway.RestApi(this, 'ApiGateway', {
-      restApiName: `learnfyra-${appEnv}-apigw`,
-      description: `Learnfyra API — ${appEnv}`,
-      defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
-        allowMethods: apigateway.Cors.ALL_METHODS,
-        allowHeaders: ['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key'],
-      },
-      deployOptions: {
-        stageName: appEnv,
-        loggingLevel: apigateway.MethodLoggingLevel.INFO,
-        metricsEnabled: true,
-        throttlingRateLimit: 10,
-        throttlingBurstLimit: 20,
-      },
-    });
-
     const apiResource = api.root.addResource('api');
 
     const generateResource = apiResource.addResource('generate');
@@ -161,48 +260,91 @@ export class LearnfyraStack extends cdk.Stack {
       { apiKeyRequired: false }
     );
 
-    // ── CloudFront distribution ────────────────────────────────────────────────
-    const apiDomainName = `${api.restApiId}.execute-api.${this.region}.amazonaws.com`;
+    let apiCustomDomain: apigateway.DomainName | undefined;
+    if (enableCustomDomains) {
+      if (!props.apiCertificateArn) {
+        throw new Error('Custom domains for API Gateway require apiCertificateArn.');
+      }
 
-    const distribution = new cloudfront.Distribution(this, 'CloudFrontDistribution', {
-      comment: `learnfyra-${appEnv}-cloudfront`,
-      defaultRootObject: 'index.html',
-      defaultBehavior: {
-        origin: new origins.S3Origin(frontendBucket, { originAccessIdentity: oai }),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
-      },
-      additionalBehaviors: {
-        '/api/*': {
-          origin: new origins.HttpOrigin(apiDomainName, {
-            originPath: `/${appEnv}`,
-          }),
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
-          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-          cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD_OPTIONS,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-        },
-      },
-      errorResponses: [
-        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(0) },
-        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.seconds(0) },
-      ],
-    });
+      const apiCertificate = acm.Certificate.fromCertificateArn(
+        this,
+        'ApiCertificate',
+        props.apiCertificateArn
+      );
+
+      apiCustomDomain = new apigateway.DomainName(this, 'ApiCustomDomain', {
+        domainName: apiDomainName,
+        certificate: apiCertificate,
+        endpointType: apigateway.EndpointType.REGIONAL,
+        securityPolicy: apigateway.SecurityPolicy.TLS_1_2,
+      });
+
+      new apigateway.BasePathMapping(this, 'ApiBasePathMapping', {
+        domainName: apiCustomDomain,
+        restApi: api,
+        stage: api.deploymentStage,
+      });
+
+      if (zone) {
+        new route53.ARecord(this, 'ApiDomainRecord', {
+          zone,
+          recordName: apiDomainName,
+          target: route53.RecordTarget.fromAlias(new route53Targets.ApiGatewayDomain(apiCustomDomain)),
+        });
+
+        if (isDev) {
+          new route53.CnameRecord(this, 'WebDomainRecordDev', {
+            zone,
+            recordName: webDomainName,
+            domainName: frontendBucket.bucketWebsiteDomainName,
+            ttl: cdk.Duration.minutes(5),
+          });
+
+          new route53.CnameRecord(this, 'AdminDomainRecordDev', {
+            zone,
+            recordName: adminDomainName,
+            domainName: webDomainName,
+            ttl: cdk.Duration.minutes(5),
+          });
+
+          new route53.CnameRecord(this, 'AuthDomainRecordDev', {
+            zone,
+            recordName: authDomainName,
+            domainName: apiDomainName,
+            ttl: cdk.Duration.minutes(5),
+          });
+        } else if (distribution) {
+          new route53.ARecord(this, 'WebDomainRecord', {
+            zone,
+            recordName: webDomainName,
+            target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(distribution)),
+          });
+
+          new route53.ARecord(this, 'AdminDomainRecord', {
+            zone,
+            recordName: adminDomainName,
+            target: route53.RecordTarget.fromAlias(new route53Targets.CloudFrontTarget(distribution)),
+          });
+        }
+      }
+    }
 
     // ── Outputs ────────────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'FrontendUrl', {
-      value: `https://${distribution.distributionDomainName}`,
-      description: 'CloudFront URL (open this in your browser)',
+      value: isDev ? `http://${frontendBucket.bucketWebsiteDomainName}` : `https://${distribution!.distributionDomainName}`,
+      description: isDev
+        ? 'S3 website URL (dev only)'
+        : 'CloudFront URL (open this in your browser)',
       exportName: `learnfyra-${appEnv}-frontend-url`,
     });
 
-    new cdk.CfnOutput(this, 'DistributionId', {
-      value: distribution.distributionId,
-      description: 'CloudFront distribution ID (for cache invalidation)',
-      exportName: `learnfyra-${appEnv}-cloudfront-id`,
-    });
+    if (!isDev && distribution) {
+      new cdk.CfnOutput(this, 'DistributionId', {
+        value: distribution.distributionId,
+        description: 'CloudFront distribution ID (for cache invalidation)',
+        exportName: `learnfyra-${appEnv}-cloudfront-id`,
+      });
+    }
 
     new cdk.CfnOutput(this, 'ApiGatewayUrl', {
       value: api.url,
@@ -221,5 +363,30 @@ export class LearnfyraStack extends cdk.Stack {
       description: 'Frontend S3 bucket name',
       exportName: `learnfyra-${appEnv}-s3-frontend-name`,
     });
+
+    if (enableCustomDomains) {
+      new cdk.CfnOutput(this, 'FrontendCustomDomain', {
+        value: webDomainName,
+        description: 'Frontend custom domain for this environment',
+      });
+
+      new cdk.CfnOutput(this, 'AdminCustomDomain', {
+        value: adminDomainName,
+        description: 'Admin custom domain for this environment',
+      });
+
+
+      new cdk.CfnOutput(this, 'ApiCustomDomainOutput', {
+        value: apiDomainName,
+        description: 'API custom domain for this environment',
+      });
+
+      if (isDev) {
+        new cdk.CfnOutput(this, 'AuthCustomDomainDev', {
+          value: authDomainName,
+          description: 'Auth custom domain for dev environment',
+        });
+      }
+    }
   }
 }

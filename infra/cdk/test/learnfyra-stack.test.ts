@@ -56,7 +56,7 @@ describe('LearnfyraStack (dev)', () => {
   test('creates generate Lambda with correct name and memory', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: 'learnfyra-dev-lambda-generate',
-      MemorySize: 1024,
+      MemorySize: 512,
       Architectures: ['arm64'],
       Runtime: 'nodejs20.x',
     });
@@ -91,15 +91,17 @@ describe('LearnfyraStack (dev)', () => {
     });
   });
 
-  test('creates CloudFront distribution', () => {
-    template.resourceCountIs('AWS::CloudFront::Distribution', 1);
+  test('does not create CloudFront distribution in dev', () => {
+    template.resourceCountIs('AWS::CloudFront::Distribution', 0);
   });
 
-  test('CloudFront distribution has correct comment', () => {
-    template.hasResourceProperties('AWS::CloudFront::Distribution', {
-      DistributionConfig: Match.objectLike({
-        Comment: 'learnfyra-dev-cloudfront',
-      }),
+  test('dev frontend bucket is configured for website hosting', () => {
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      BucketName: 'learnfyra-dev-s3-frontend',
+      WebsiteConfiguration: {
+        IndexDocument: 'index.html',
+        ErrorDocument: 'index.html',
+      },
     });
   });
 
