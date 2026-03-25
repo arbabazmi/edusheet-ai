@@ -28,8 +28,11 @@ const { handler } = await import('../../backend/handlers/submitHandler.js');
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
 
+const VALID_ID   = '12345678-1234-4123-8123-123456789abc';
+const MISSING_ID = '98765432-9876-4987-8987-987654321def';
+
 const mockSolveData = {
-  worksheetId: 'abc-123',
+  worksheetId: VALID_ID,
   totalPoints: 2,
   questions: [
     { number: 1, type: 'fill-in-the-blank', answer: '24', explanation: '4×6=24', points: 1 },
@@ -38,7 +41,7 @@ const mockSolveData = {
 };
 
 const mockResultResponse = {
-  worksheetId: 'abc-123',
+  worksheetId: VALID_ID,
   totalScore: 2,
   totalPoints: 2,
   percentage: 100,
@@ -96,7 +99,7 @@ describe('submitHandler — happy path', () => {
 
   it('returns status 200 for a valid request', async () => {
     const result = await handler(
-      mockEvent({ worksheetId: 'abc-123', answers: validAnswers, timeTaken: 120, timed: false }),
+      mockEvent({ worksheetId: VALID_ID, answers: validAnswers, timeTaken: 120, timed: false }),
       mockContext,
     );
     expect(result.statusCode).toBe(200);
@@ -104,7 +107,7 @@ describe('submitHandler — happy path', () => {
 
   it('calls buildResult with the worksheet and student answers', async () => {
     await handler(
-      mockEvent({ worksheetId: 'abc-123', answers: validAnswers, timeTaken: 120, timed: false }),
+      mockEvent({ worksheetId: VALID_ID, answers: validAnswers, timeTaken: 120, timed: false }),
       mockContext,
     );
     expect(buildResult).toHaveBeenCalledTimes(1);
@@ -118,16 +121,47 @@ describe('submitHandler — happy path', () => {
 
   it('response body contains the result from buildResult', async () => {
     const result = await handler(
-      mockEvent({ worksheetId: 'abc-123', answers: validAnswers }),
+      mockEvent({ worksheetId: VALID_ID, answers: validAnswers }),
       mockContext,
     );
     const body = JSON.parse(result.body);
-    expect(body).toMatchObject({ worksheetId: 'abc-123', totalScore: 2, percentage: 100 });
+    expect(body).toMatchObject({ worksheetId: VALID_ID, totalScore: 2, percentage: 100 });
   });
 
   it('CORS headers are present on a 200 response', async () => {
     const result = await handler(
+      mockEvent({ worksheetId: VALID_ID, answers: validAnswers }),
+      mockContext,
+    );
+    expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
+  });
+
+});
+
+// ─── 400 — invalid UUID format ────────────────────────────────────────────────
+
+describe('submitHandler — 400 invalid worksheetId format', () => {
+
+  it('returns status 400 for a non-UUID worksheetId', async () => {
+    const result = await handler(
       mockEvent({ worksheetId: 'abc-123', answers: validAnswers }),
+      mockContext,
+    );
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('returns error message for invalid format', async () => {
+    const result = await handler(
+      mockEvent({ worksheetId: '../etc/passwd', answers: validAnswers }),
+      mockContext,
+    );
+    const body = JSON.parse(result.body);
+    expect(body.error).toMatch(/invalid worksheetId format/i);
+  });
+
+  it('CORS headers are present on invalid-format 400 response', async () => {
+    const result = await handler(
+      mockEvent({ worksheetId: 'not-a-uuid', answers: validAnswers }),
       mockContext,
     );
     expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
@@ -173,7 +207,7 @@ describe('submitHandler — 400 answers not an array', () => {
 
   it('returns status 400 when answers is a string', async () => {
     const result = await handler(
-      mockEvent({ worksheetId: 'abc-123', answers: 'not-an-array' }),
+      mockEvent({ worksheetId: VALID_ID, answers: 'not-an-array' }),
       mockContext,
     );
     expect(result.statusCode).toBe(400);
@@ -181,7 +215,7 @@ describe('submitHandler — 400 answers not an array', () => {
 
   it('returns error: "answers must be an array." when answers is not an array', async () => {
     const result = await handler(
-      mockEvent({ worksheetId: 'abc-123', answers: 'not-an-array' }),
+      mockEvent({ worksheetId: VALID_ID, answers: 'not-an-array' }),
       mockContext,
     );
     const body = JSON.parse(result.body);
@@ -190,7 +224,7 @@ describe('submitHandler — 400 answers not an array', () => {
 
   it('returns status 400 when answers is missing (undefined → undefined)', async () => {
     const result = await handler(
-      mockEvent({ worksheetId: 'abc-123' }),
+      mockEvent({ worksheetId: VALID_ID }),
       mockContext,
     );
     expect(result.statusCode).toBe(400);
@@ -198,7 +232,7 @@ describe('submitHandler — 400 answers not an array', () => {
 
   it('CORS headers are present on a 400 answers-invalid response', async () => {
     const result = await handler(
-      mockEvent({ worksheetId: 'abc-123', answers: 42 }),
+      mockEvent({ worksheetId: VALID_ID, answers: 42 }),
       mockContext,
     );
     expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
@@ -218,7 +252,7 @@ describe('submitHandler — 404 worksheet not found', () => {
 
   it('returns status 404 when solve-data.json does not exist', async () => {
     const result = await handler(
-      mockEvent({ worksheetId: 'missing-id', answers: validAnswers }),
+      mockEvent({ worksheetId: MISSING_ID, answers: validAnswers }),
       mockContext,
     );
     expect(result.statusCode).toBe(404);
@@ -226,7 +260,7 @@ describe('submitHandler — 404 worksheet not found', () => {
 
   it('returns an error message on 404', async () => {
     const result = await handler(
-      mockEvent({ worksheetId: 'missing-id', answers: validAnswers }),
+      mockEvent({ worksheetId: MISSING_ID, answers: validAnswers }),
       mockContext,
     );
     const body = JSON.parse(result.body);
@@ -235,7 +269,7 @@ describe('submitHandler — 404 worksheet not found', () => {
 
   it('CORS headers are present on a 404 response', async () => {
     const result = await handler(
-      mockEvent({ worksheetId: 'missing-id', answers: validAnswers }),
+      mockEvent({ worksheetId: MISSING_ID, answers: validAnswers }),
       mockContext,
     );
     expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();

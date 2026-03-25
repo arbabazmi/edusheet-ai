@@ -5,6 +5,17 @@
  */
 
 /**
+ * Normalises a string for comparison: lowercase, collapse internal whitespace
+ * to a single space, and trim leading/trailing whitespace.
+ *
+ * @param {string} str - Raw input string
+ * @returns {string} Normalised string
+ */
+export function normalizeText(str) {
+  return String(str).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Extracts the option letter from a multiple-choice answer string.
  * Normalises both "B. 56" (stored format) and "B" (student input format) to "B".
  *
@@ -14,8 +25,8 @@
 export function extractOptionLetter(str) {
   if (!str || typeof str !== 'string') return '';
   const trimmed = str.trim();
-  // Match a single letter optionally followed by a dot and anything else
-  const match = trimmed.match(/^([A-Za-z])[.\s]/);
+  // Match a single letter optionally followed by a dot/space or end of string
+  const match = trimmed.match(/^([A-Za-z])(?:[.\s]|$)/);
   if (match) return match[1].toUpperCase();
   // If the whole string is just one letter, return it uppercased
   if (/^[A-Za-z]$/.test(trimmed)) return trimmed.toUpperCase();
@@ -49,22 +60,22 @@ export function scoreQuestion(question, studentAnswer) {
     }
 
     case 'true-false': {
-      const correct =
-        String(answer).toLowerCase().trim() === String(studentAnswer).toLowerCase().trim();
+      const correct = normalizeText(answer) === normalizeText(studentAnswer);
       return { correct, pointsEarned: correct ? maxPoints : 0 };
     }
 
     case 'fill-in-the-blank': {
-      const correct =
-        String(answer).toLowerCase().trim() === String(studentAnswer).toLowerCase().trim();
+      const correct = normalizeText(answer) === normalizeText(studentAnswer);
       return { correct, pointsEarned: correct ? maxPoints : 0 };
     }
 
     case 'short-answer': {
-      // Student answer must contain the keyword(s) from the correct answer
-      const correct = String(studentAnswer)
-        .toLowerCase()
-        .includes(String(answer).toLowerCase().trim());
+      // Split the stored answer into keywords; every keyword must appear as a
+      // substring of the student's normalised answer.
+      const normStudent = normalizeText(studentAnswer);
+      if (normStudent === '') return { correct: false, pointsEarned: 0 };
+      const keywords = normalizeText(answer).split(' ').filter(Boolean);
+      const correct = keywords.every((kw) => normStudent.includes(kw));
       return { correct, pointsEarned: correct ? maxPoints : 0 };
     }
 
@@ -101,8 +112,7 @@ export function scoreQuestion(question, studentAnswer) {
       const finalAnswer = typeof studentAnswer === 'object' && studentAnswer !== null
         ? String(studentAnswer.finalAnswer ?? '')
         : String(studentAnswer);
-      const correct =
-        String(answer).toLowerCase().trim() === finalAnswer.toLowerCase().trim();
+      const correct = normalizeText(answer) === normalizeText(finalAnswer);
       return { correct, pointsEarned: correct ? maxPoints : 0 };
     }
 

@@ -184,7 +184,9 @@ app.get('/api/solve/:worksheetId', async (req, res) => {
     );
     res.status(result.statusCode).json(JSON.parse(result.body));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('solve route error:', err);
+    res.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
+    res.status(500).json({ error: 'Internal server error.' });
   }
 });
 
@@ -198,7 +200,9 @@ app.post('/api/submit', async (req, res) => {
     );
     res.status(result.statusCode).json(JSON.parse(result.body));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('submit route error:', err);
+    res.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
+    res.status(500).json({ error: 'Internal server error.' });
   }
 });
 

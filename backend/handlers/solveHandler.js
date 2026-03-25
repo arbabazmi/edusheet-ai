@@ -9,7 +9,7 @@
  */
 
 import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -49,8 +49,28 @@ export const handler = async (event, context) => {
       };
     }
 
+    // Guard against path traversal: worksheetId must be a v4 UUID
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(worksheetId)) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: 'Invalid worksheetId format.' }),
+      };
+    }
+
     // Local dev: resolve path 2 levels up from backend/handlers/ to project root
-    const localDir = join(__dirname, '../../worksheets-local', worksheetId);
+    const baseDir = resolve(join(__dirname, '../../worksheets-local'));
+    const localDir = resolve(join(baseDir, worksheetId));
+
+    // Ensure the resolved path stays within the worksheets-local directory
+    if (!localDir.startsWith(baseDir + sep)) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: 'Invalid worksheetId format.' }),
+      };
+    }
+
     const filePath = join(localDir, 'solve-data.json');
 
     let worksheet;
@@ -90,7 +110,7 @@ export const handler = async (event, context) => {
     return {
       statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({ error: err.message }),
+      body: JSON.stringify({ error: 'Internal server error.' }),
     };
   }
 };

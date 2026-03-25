@@ -21,8 +21,11 @@ const { handler } = await import('../../backend/handlers/solveHandler.js');
 
 // ─── Shared fixture ───────────────────────────────────────────────────────────
 
+const VALID_ID   = '12345678-1234-4123-8123-123456789abc';
+const MISSING_ID = '98765432-9876-4987-8987-987654321def';
+
 const mockSolveData = {
-  worksheetId: 'abc-123',
+  worksheetId: VALID_ID,
   grade: 3,
   subject: 'Math',
   topic: 'Multiplication',
@@ -93,25 +96,25 @@ describe('solveHandler — happy path', () => {
   });
 
   it('returns status 200 for a valid worksheetId', async () => {
-    const result = await handler(mockEvent('abc-123'), mockContext);
+    const result = await handler(mockEvent(VALID_ID), mockContext);
     expect(result.statusCode).toBe(200);
   });
 
   it('response body contains worksheetId', async () => {
-    const result = await handler(mockEvent('abc-123'), mockContext);
+    const result = await handler(mockEvent(VALID_ID), mockContext);
     const body = JSON.parse(result.body);
-    expect(body).toHaveProperty('worksheetId', 'abc-123');
+    expect(body).toHaveProperty('worksheetId', VALID_ID);
   });
 
   it('response body contains a questions array', async () => {
-    const result = await handler(mockEvent('abc-123'), mockContext);
+    const result = await handler(mockEvent(VALID_ID), mockContext);
     const body = JSON.parse(result.body);
     expect(Array.isArray(body.questions)).toBe(true);
     expect(body.questions).toHaveLength(2);
   });
 
   it('questions in response do NOT include the answer field', async () => {
-    const result = await handler(mockEvent('abc-123'), mockContext);
+    const result = await handler(mockEvent(VALID_ID), mockContext);
     const body = JSON.parse(result.body);
     for (const q of body.questions) {
       expect(q).not.toHaveProperty('answer');
@@ -119,7 +122,7 @@ describe('solveHandler — happy path', () => {
   });
 
   it('questions in response do NOT include the explanation field', async () => {
-    const result = await handler(mockEvent('abc-123'), mockContext);
+    const result = await handler(mockEvent(VALID_ID), mockContext);
     const body = JSON.parse(result.body);
     for (const q of body.questions) {
       expect(q).not.toHaveProperty('explanation');
@@ -127,13 +130,13 @@ describe('solveHandler — happy path', () => {
   });
 
   it('questions in response still contain the question text', async () => {
-    const result = await handler(mockEvent('abc-123'), mockContext);
+    const result = await handler(mockEvent(VALID_ID), mockContext);
     const body = JSON.parse(result.body);
     expect(body.questions[0]).toHaveProperty('question', '4×6=?');
   });
 
   it('CORS headers are present on a 200 response', async () => {
-    const result = await handler(mockEvent('abc-123'), mockContext);
+    const result = await handler(mockEvent(VALID_ID), mockContext);
     expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
   });
 
@@ -150,18 +153,40 @@ describe('solveHandler — 404 worksheet not found', () => {
   });
 
   it('returns status 404 when the solve-data.json file does not exist', async () => {
-    const result = await handler(mockEvent('unknown-id'), mockContext);
+    const result = await handler(mockEvent(MISSING_ID), mockContext);
     expect(result.statusCode).toBe(404);
   });
 
   it('returns error: "Worksheet not found." on 404', async () => {
-    const result = await handler(mockEvent('unknown-id'), mockContext);
+    const result = await handler(mockEvent(MISSING_ID), mockContext);
     const body = JSON.parse(result.body);
     expect(body.error).toBe('Worksheet not found.');
   });
 
   it('CORS headers are present on a 404 response', async () => {
-    const result = await handler(mockEvent('unknown-id'), mockContext);
+    const result = await handler(mockEvent(MISSING_ID), mockContext);
+    expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
+  });
+
+});
+
+// ─── 400 — invalid UUID format ────────────────────────────────────────────────
+
+describe('solveHandler — 400 invalid worksheetId format', () => {
+
+  it('returns status 400 for a non-UUID worksheetId', async () => {
+    const result = await handler(mockEvent('abc-123'), mockContext);
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('returns error message for invalid format', async () => {
+    const result = await handler(mockEvent('../etc/passwd'), mockContext);
+    const body = JSON.parse(result.body);
+    expect(body.error).toMatch(/invalid worksheetId format/i);
+  });
+
+  it('CORS headers are present on invalid-format 400 response', async () => {
+    const result = await handler(mockEvent('not-a-uuid'), mockContext);
     expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
   });
 

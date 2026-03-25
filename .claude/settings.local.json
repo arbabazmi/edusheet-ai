@@ -56,7 +56,11 @@
       "Bash(node --check /c/arbab-github/edusheet-ai/frontend/js/solve.js)",
       "Bash(node:*)",
       "Bash(grep -rl \"EduSheet\\\\|edusheet\\\\|EduSheet AI\" --include=*.js --include=*.html --include=*.css --include=*.json --include=*.md --include=*.ts --include=*.yaml --include=*.yml --include=*.txt .)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(grep -E \"\\\\.md$\")",
+      "Bash(find C:arbab-githubedusheet-aidocs -name *.md -type f)",
+      "Bash(find /c/arbab-github/edusheet-ai/docs -type f -name *.md)",
+      "Bash(find /c/arbab-github/edusheet-ai -maxdepth 1 -type f -name *.md)"
     ]
   }
 }

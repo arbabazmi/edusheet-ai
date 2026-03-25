@@ -41,6 +41,10 @@ describe('extractOptionLetter', () => {
     expect(extractOptionLetter(undefined)).toBe('');
   });
 
+  it('extracts letter from "B." (trailing dot, no text after)', () => {
+    expect(extractOptionLetter('B.')).toBe('B');
+  });
+
 });
 
 // ─── scoreQuestion — multiple-choice ─────────────────────────────────────────

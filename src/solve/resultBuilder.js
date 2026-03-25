@@ -28,7 +28,16 @@ export function buildResult(worksheet, answers, timeTaken, timed) {
   }
 
   let totalScore = 0;
-  const totalPoints = typeof worksheet.totalPoints === 'number' ? worksheet.totalPoints : 0;
+
+  // Compute the authoritative total from per-question points, falling back to
+  // worksheet.totalPoints only when questions are missing the points field.
+  const questionPointsSum = (worksheet.questions || []).reduce(
+    (sum, q) => sum + (typeof q.points === 'number' ? q.points : 1),
+    0,
+  );
+  const totalPoints = questionPointsSum > 0
+    ? questionPointsSum
+    : (typeof worksheet.totalPoints === 'number' ? worksheet.totalPoints : 0);
 
   const results = (worksheet.questions || []).map((question) => {
     const studentAnswer = answerMap[question.number] ?? null;
@@ -48,7 +57,7 @@ export function buildResult(worksheet, answers, timeTaken, timed) {
   });
 
   const percentage = totalPoints > 0
-    ? Math.round((totalScore / totalPoints) * 100)
+    ? Math.min(100, Math.round((totalScore / totalPoints) * 100))
     : 0;
 
   return {
