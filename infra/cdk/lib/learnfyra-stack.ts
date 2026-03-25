@@ -77,6 +77,8 @@ export class LearnfyraStack extends cdk.Stack {
     // ── Tag all resources ─────────────────────────────────────────────────────
     cdk.Tags.of(this).add('Project', 'learnfyra');
     cdk.Tags.of(this).add('Env', appEnv);
+    cdk.Tags.of(this).add('Environment', appEnv);
+    cdk.Tags.of(this).add('environment', appEnv);
     cdk.Tags.of(this).add('ManagedBy', 'cdk');
 
     // ── S3: Worksheet bucket (private) ────────────────────────────────────────
