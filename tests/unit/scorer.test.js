@@ -2,7 +2,7 @@
  * @file tests/unit/scorer.test.js
  * @description Unit tests for src/solve/scorer.js
  * Tests cover extractOptionLetter and scoreQuestion for every question type
- * defined in the EduSheet AI worksheet schema.
+ * defined in the Learnfyra worksheet schema.
  * @agent QA
  */
 

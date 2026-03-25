@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Solve Worksheet — EduSheet AI</title>
+  <title>Solve Worksheet — Learnfyra</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
   <link rel="stylesheet" href="css/solve.css" />
 </head>
@@ -20,7 +20,7 @@
       <div class="header-inner">
         <a href="/" class="logo" style="text-decoration:none;">
           <span class="logo-icon" aria-hidden="true">&#9998;</span>
-          <span class="logo-text">EduSheet <span class="logo-accent">AI</span></span>
+          <span class="logo-text">Learn<span class="logo-accent">fyra</span></span>
         </a>
         <p class="header-tagline" id="worksheetMeta">Loading worksheet&hellip;</p>
       </div>
@@ -53,16 +53,20 @@
           <h2 class="card-title" id="modeTitleText">Ready to solve?</h2>
           <p class="card-subtitle" id="modeSubtitleText"></p>
         </div>
-        <div class="mode-selection">
+        <div class="mode-selection" id="modeSelection">
           <button type="button" id="timedModeBtn" class="mode-btn mode-btn--timed">
             <span class="mode-btn__icon" aria-hidden="true">&#9201;</span>
-            <span class="mode-btn__label">Timed Mode</span>
-            <span class="mode-btn__desc" id="timedDesc">Race the clock</span>
+            <div>
+              <span class="mode-btn__label">Timed Mode</span>
+              <span class="mode-btn__desc" id="timedDesc">Race the clock</span>
+            </div>
           </button>
           <button type="button" id="untimedModeBtn" class="mode-btn mode-btn--untimed">
             <span class="mode-btn__icon" aria-hidden="true">&#128214;</span>
-            <span class="mode-btn__label">Untimed Mode</span>
-            <span class="mode-btn__desc">Solve at your own pace</span>
+            <div>
+              <span class="mode-btn__label">Untimed Mode</span>
+              <span class="mode-btn__desc">Solve at your own pace</span>
+            </div>
           </button>
         </div>
       </section>
@@ -114,7 +118,7 @@
 
   <footer class="site-footer">
     <div class="container">
-      <p class="footer-text">EduSheet AI &mdash; Aligned to CCSS, NGSS, and NHES standards</p>
+      <p class="footer-text">Learnfyra &mdash; Aligned to CCSS, NGSS, and NHES standards</p>
     </div>
   </footer>
 

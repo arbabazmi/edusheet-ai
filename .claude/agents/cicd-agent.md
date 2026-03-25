@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 ---
 
-You are the CI/CD Engineer for EduSheet AI — a Node.js worksheet generator deployed on AWS (S3 + Lambda + CloudFront).
+You are the CI/CD Engineer for Learnfyra — a Node.js worksheet generator deployed on AWS (S3 + Lambda + CloudFront).
 
 Always read CLAUDE.md and the existing .github/workflows/ folder before creating or editing any workflow files.
 
@@ -171,7 +171,7 @@ jobs:
 
       - name: Sync frontend to S3
         run: |
-          aws s3 sync frontend/ s3://edusheet-ai-frontend-staging \
+          aws s3 sync frontend/ s3://learnfyra-staging-s3-frontend \
             --delete \
             --cache-control "max-age=86400"
 
@@ -258,7 +258,7 @@ jobs:
 
       - name: Sync frontend to S3
         run: |
-          aws s3 sync frontend/ s3://edusheet-ai-frontend-prod \
+          aws s3 sync frontend/ s3://learnfyra-prod-s3-frontend \
             --delete \
             --cache-control "max-age=604800"
 
@@ -297,7 +297,7 @@ CF_DIST_PROD              → CloudFront distribution ID for production
 
 ### How to create the IAM users in AWS Console
 1. Go to AWS Console → IAM → Users → Create user
-2. Name it: edusheet-staging-deploy (or edusheet-prod-deploy)
+2. Name it: learnfyra-staging-deploy (or learnfyra-prod-deploy)
 3. Attach this policy directly (minimum permissions):
 
 ```json
@@ -313,8 +313,8 @@ CF_DIST_PROD              → CloudFront distribution ID for production
         "s3:ListBucket"
       ],
       "Resource": [
-        "arn:aws:s3:::edusheet-ai-*",
-        "arn:aws:s3:::edusheet-ai-*/*"
+        "arn:aws:s3:::learnfyra-*",
+        "arn:aws:s3:::learnfyra-*/*"
       ]
     },
     {
@@ -387,4 +387,4 @@ When a workflow fails, check in this order:
 - Always set `node-version: '18'` and `cache: 'npm'`
 - After creating workflows: message devops-agent with
   "Workflows ready. Confirm these bucket names exist in CDK:
-   edusheet-ai-frontend-staging and edusheet-ai-frontend-prod"
+   learnfyra-staging-s3-frontend and learnfyra-prod-s3-frontend"

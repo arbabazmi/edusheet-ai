@@ -1,4 +1,4 @@
-# EduSheet AI — Deployment Guide
+# Learnfyra — Deployment Guide
 
 Deployments are driven by **GitHub Actions**. Pushing to a branch triggers the
 corresponding pipeline automatically. No local AWS credentials or CDK CLI needed.
@@ -33,7 +33,7 @@ You create one IAM role, store its ARN in GitHub, and the pipeline assumes it au
 **Then create an IAM Role → Trusted entity: Web identity:**
 - Identity provider: `token.actions.githubusercontent.com`
 - Audience: `sts.amazonaws.com`
-- Add condition: `token.actions.githubusercontent.com:sub` = `repo:YOUR_GITHUB_USERNAME/edusheet-ai:*`
+- Add condition: `token.actions.githubusercontent.com:sub` = `repo:YOUR_GITHUB_USERNAME/learnfyra:*`
 
 **Attach these permissions policies to the role:**
 - `AmazonS3FullAccess`
@@ -46,11 +46,11 @@ You create one IAM role, store its ARN in GitHub, and the pipeline assumes it au
 
 > For simplicity, you can attach `AdministratorAccess` instead of all the above.
 
-The role has already been created as **`edusheet-ai-GitHubActionsDeployRole`**.
+The role has already been created as **`learnfyra-GitHubActionsDeployRole`**.
 
 Its ARN follows this pattern:
 ```
-arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/edusheet-ai-GitHubActionsDeployRole
+arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/learnfyra-GitHubActionsDeployRole
 ```
 Replace `YOUR_AWS_ACCOUNT_ID` with your 12-digit AWS account ID — this is the value
 you store in the `AWS_DEPLOY_ROLE_ARN` secret (see Step 3).
@@ -77,7 +77,7 @@ Go to your GitHub repo → **Settings → Secrets and variables → Actions**.
 
 | Secret name | Value | Where to find it |
 |---|---|---|
-| `AWS_DEPLOY_ROLE_ARN` | `arn:aws:iam::123456789012:role/edusheet-ai-GitHubActionsDeployRole` | From Step 1 |
+| `AWS_DEPLOY_ROLE_ARN` | `arn:aws:iam::123456789012:role/learnfyra-GitHubActionsDeployRole` | From Step 1 |
 | `ANTHROPIC_API_KEY_DEV` | `sk-ant-...` | [console.anthropic.com](https://console.anthropic.com) |
 | `ANTHROPIC_API_KEY_STAGING` | `sk-ant-...` | Same |
 | `ANTHROPIC_API_KEY_PROD` | `sk-ant-...` | Same |
@@ -117,7 +117,7 @@ git checkout -b develop
 git push origin develop
 ```
 The `deploy-dev.yml` pipeline runs automatically. Watch it at:
-`https://github.com/YOUR_GITHUB_USERNAME/edusheet-ai/actions`
+`https://github.com/YOUR_GITHUB_USERNAME/learnfyra/actions`
 
 ### Promote to staging
 ```bash
@@ -138,16 +138,16 @@ git push origin main
 
 ## Resource Naming Convention
 
-All AWS resources follow `edusheet-{env}-{service-type}`:
+All AWS resources follow `learnfyra-{env}-{service-type}`:
 
 | Resource | Dev | Staging | Prod |
 |---|---|---|---|
-| Worksheet S3 bucket | `edusheet-dev-s3-worksheets` | `edusheet-staging-s3-worksheets` | `edusheet-prod-s3-worksheets` |
-| Frontend S3 bucket | `edusheet-dev-s3-frontend` | `edusheet-staging-s3-frontend` | `edusheet-prod-s3-frontend` |
-| Generate Lambda | `edusheet-dev-lambda-generate` | `edusheet-staging-lambda-generate` | `edusheet-prod-lambda-generate` |
-| Download Lambda | `edusheet-dev-lambda-download` | `edusheet-staging-lambda-download` | `edusheet-prod-lambda-download` |
-| API Gateway | `edusheet-dev-apigw` | `edusheet-staging-apigw` | `edusheet-prod-apigw` |
-| SSM param | `/edusheet/dev/anthropic-api-key` | `/edusheet/staging/anthropic-api-key` | `/edusheet/prod/anthropic-api-key` |
+| Worksheet S3 bucket | `learnfyra-dev-s3-worksheets` | `learnfyra-staging-s3-worksheets` | `learnfyra-prod-s3-worksheets` |
+| Frontend S3 bucket | `learnfyra-dev-s3-frontend` | `learnfyra-staging-s3-frontend` | `learnfyra-prod-s3-frontend` |
+| Generate Lambda | `learnfyra-dev-lambda-generate` | `learnfyra-staging-lambda-generate` | `learnfyra-prod-lambda-generate` |
+| Download Lambda | `learnfyra-dev-lambda-download` | `learnfyra-staging-lambda-download` | `learnfyra-prod-lambda-download` |
+| API Gateway | `learnfyra-dev-apigw` | `learnfyra-staging-apigw` | `learnfyra-prod-apigw` |
+| SSM param | `/learnfyra/dev/anthropic-api-key` | `/learnfyra/staging/anthropic-api-key` | `/learnfyra/prod/anthropic-api-key` |
 
 ---
 

@@ -208,7 +208,7 @@ app.get('/{*path}', (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\nEduSheet AI — local dev server`);
+  console.log(`\nLearnfyra — local dev server`);
   console.log(`  App:   http://localhost:${PORT}`);
   console.log(`  Files: ${LOCAL_FILES_DIR}`);
   console.log('\nReady. Open the URL above in your browser.\n');

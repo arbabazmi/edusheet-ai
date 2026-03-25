@@ -1,7 +1,7 @@
 /**
  * @file src/solve/scorer.js
  * @description Scores student answers against correct answers in a worksheet.
- * Handles all question types defined in the EduSheet AI schema.
+ * Handles all question types defined in the Learnfyra schema.
  */
 
 /**

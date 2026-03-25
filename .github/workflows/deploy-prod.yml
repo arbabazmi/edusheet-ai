@@ -63,7 +63,7 @@ jobs:
       - name: Write Anthropic API key to SSM
         run: |
           aws ssm put-parameter \
-            --name "/edusheet/prod/anthropic-api-key" \
+            --name "/learnfyra/prod/anthropic-api-key" \
             --value "${{ secrets.ANTHROPIC_API_KEY_PROD }}" \
             --type SecureString \
             --overwrite \
@@ -88,9 +88,9 @@ jobs:
       - name: Extract CDK outputs
         id: cdk-outputs
         run: |
-          FRONTEND_BUCKET=$(jq -r '.["EduSheetAiStack-prod"]["FrontendBucketName"]' infra/cdk/cdk-outputs.json)
-          DIST_ID=$(jq -r '.["EduSheetAiStack-prod"]["DistributionId"]' infra/cdk/cdk-outputs.json)
-          FRONTEND_URL=$(jq -r '.["EduSheetAiStack-prod"]["FrontendUrl"]' infra/cdk/cdk-outputs.json)
+          FRONTEND_BUCKET=$(jq -r '.["LearnfyraStack-prod"]["FrontendBucketName"]' infra/cdk/cdk-outputs.json)
+          DIST_ID=$(jq -r '.["LearnfyraStack-prod"]["DistributionId"]' infra/cdk/cdk-outputs.json)
+          FRONTEND_URL=$(jq -r '.["LearnfyraStack-prod"]["FrontendUrl"]' infra/cdk/cdk-outputs.json)
           echo "frontend_bucket=$FRONTEND_BUCKET" >> $GITHUB_OUTPUT
           echo "dist_id=$DIST_ID" >> $GITHUB_OUTPUT
           echo "frontend_url=$FRONTEND_URL" >> $GITHUB_OUTPUT

@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EduSheet AI — Worksheet Generator</title>
+  <title>Learnfyra — AI Worksheet Generator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/solve.css" />
 </head>
 <body>
 
@@ -19,9 +20,9 @@
       <div class="header-inner">
         <div class="logo">
           <span class="logo-icon" aria-hidden="true">&#9998;</span>
-          <span class="logo-text">EduSheet <span class="logo-accent">AI</span></span>
+          <span class="logo-text">Learn<span class="logo-accent">fyra</span></span>
         </div>
-        <p class="header-tagline">USA curriculum-aligned worksheets for Grades 1-10</p>
+        <p class="header-tagline">USA curriculum-aligned worksheets for Grades 1–10</p>
       </div>
     </div>
   </header>
@@ -31,18 +32,19 @@
 
       <section class="hero" aria-label="Product introduction">
         <p class="hero-kicker">Built for Teachers and Tutors</p>
-        <h1 class="hero-title">Create polished classroom worksheets in under a minute</h1>
-        <p class="hero-subtitle">Choose grade, subject, and topic, then personalize the worksheet with optional student and class details before downloading.</p>
+        <h1 class="hero-title">Create polished classroom worksheets<br class="hero-break"> in under a minute</h1>
+        <p class="hero-subtitle">Choose grade, subject, and topic — then personalize with optional student and class details before downloading.</p>
       </section>
 
       <!-- Form Section -->
       <section id="formSection" class="card reveal" aria-label="Worksheet generator form">
         <div class="card-header">
           <h2 class="card-title">Generate a Worksheet</h2>
-          <p class="card-subtitle">Required fields define the worksheet. Student and class details are optional and prefill the worksheet header.</p>
+          <p class="card-subtitle">Required fields define the worksheet content. Student and class details are optional and prefill the worksheet header.</p>
         </div>
 
         <form id="worksheetForm" novalidate>
+
           <h3 class="form-section-title">Worksheet Setup</h3>
           <div class="form-grid">
 
@@ -130,7 +132,7 @@
 
           </div><!-- /.form-grid -->
 
-          <h3 class="form-section-title">Student and Class Details (Optional)</h3>
+          <h3 class="form-section-title">Student &amp; Class Details <span style="font-size:0.75em;font-weight:700;opacity:0.6;">(Optional)</span></h3>
           <div class="form-grid">
 
             <div class="form-group">
@@ -164,7 +166,7 @@
 
           <div class="form-actions">
             <button type="submit" id="generateBtn" class="btn btn--primary" disabled>
-              Generate Worksheet
+              &#9997;&nbsp; Generate Worksheet
             </button>
           </div>
 
@@ -217,7 +219,7 @@
 
   <footer class="site-footer">
     <div class="container">
-      <p class="footer-text">EduSheet AI &mdash; Aligned to CCSS, NGSS, and NHES standards</p>
+      <p class="footer-text">Learnfyra &mdash; Aligned to CCSS, NGSS, and NHES standards</p>
     </div>
   </footer>
 

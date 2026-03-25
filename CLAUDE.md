@@ -1,14 +1,14 @@
-# EduSheet AI — Agent Teams System Prompt
+# Learnfyra — Agent Teams System Prompt
 # File: CLAUDE.md (project root)
 # Version: 3.0 — Online Solve & Answer Validation Edition
 # Updated: March 2026
 
 ## Project Overview
-EduSheet AI generates AI-powered, USA curriculum-aligned worksheets for Grades 1–10.
+Learnfyra generates AI-powered, USA curriculum-aligned worksheets for Grades 1–10.
 It runs as both a local CLI and a serverless web app deployed on AWS.
 **Students can now solve worksheets online, get instant scoring, and review answers — with optional timed mode.**
 
-Repository: https://github.com/arbabazmi/edusheet-ai
+Repository: https://github.com/arbabazmi/learnfyra
 Stack: Node.js 18+, Anthropic Claude API, Puppeteer, docx npm, Inquirer, Jest
 AWS: Lambda, S3, API Gateway, CloudFront, Secrets Manager
 IaC: AWS CDK (TypeScript)
@@ -216,7 +216,7 @@ And the worksheetId is a UUID that maps to the stored JSON
 
 ### S3 Key Structure for Solve Data
 ```
-edusheet-ai-worksheets-{env}/
+learnfyra-{env}-s3-worksheets/
   worksheets/{year}/{month}/{day}/{uuid}/
     worksheet.pdf
     worksheet.docx
@@ -245,8 +245,8 @@ AWS (later): API Gateway routes to Lambda functions.
 
 ### Lambda Functions (NOT DEPLOYING YET — code is Lambda-ready, deploy later)
 ```
-edusheet-solve    GET  /api/solve/{id}  10s  128MB
-edusheet-submit   POST /api/submit      15s  256MB
+learnfyra-solve    GET  /api/solve/{id}  10s  128MB
+learnfyra-submit   POST /api/submit      15s  256MB
 ```
 
 ### File Structure for Online Solve
@@ -439,7 +439,7 @@ const mockEvent = (body) => ({
 
 const mockContext = {
   callbackWaitsForEmptyEventLoop: true,
-  functionName: 'edusheet-generate',
+  functionName: 'learnfyra-generate',
   getRemainingTimeInMillis: () => 60000
 };
 
@@ -485,7 +485,7 @@ Responsibilities:
 Canonical Worksheet JSON Schema v1 — do not change without updating this file:
 ```json
 {
-  "$schema": "edusheet-ai/worksheet/v1",
+  "$schema": "learnfyra/worksheet/v1",
   "title": "string",
   "grade": "integer 1-10",
   "subject": "enum: Math | ELA | Science | Social Studies | Health",
@@ -509,7 +509,7 @@ Canonical Worksheet JSON Schema v1 — do not change without updating this file:
 
 S3 bucket key structure (DBA owns, IaC implements):
 ```
-edusheet-ai-worksheets-{env}/
+learnfyra-{env}-s3-worksheets/
   worksheets/{year}/{month}/{day}/{uuid}/
     worksheet.pdf
     worksheet.docx
@@ -519,7 +519,7 @@ edusheet-ai-worksheets-{env}/
     metadata.json
     solve-data.json          ← worksheet JSON with answers for online scoring
 
-edusheet-ai-frontend-{env}/
+learnfyra-{env}-s3-frontend/
   index.html
   solve.html
   css/styles.css
@@ -527,7 +527,7 @@ edusheet-ai-frontend-{env}/
   js/app.js
   js/solve.js
 
-edusheet-ai-logs-{env}/
+learnfyra-{env}-s3-logs/
   access-logs/
 ```
 
@@ -575,19 +575,19 @@ Internet → CloudFront (HTTPS, caching, WAF)
               └── /*     → S3 (static frontend)
 
 Lambda Functions:
-  edusheet-generate  POST /api/generate   60s  1024MB
-  edusheet-download  GET  /api/download   30s   256MB
-  edusheet-list      GET  /api/worksheets 10s   128MB
-  edusheet-solve     GET  /api/solve/{id} 10s   128MB
-  edusheet-submit    POST /api/submit     15s   256MB
+  learnfyra-generate  POST /api/generate   60s  1024MB
+  learnfyra-download  GET  /api/download   30s   256MB
+  learnfyra-list      GET  /api/worksheets 10s   128MB
+  learnfyra-solve     GET  /api/solve/{id} 10s   128MB
+  learnfyra-submit    POST /api/submit     15s   256MB
 
 S3 Buckets:
-  edusheet-ai-worksheets-{env}  private, presigned URLs, 7-day lifecycle
-  edusheet-ai-frontend-{env}    public read, CloudFront origin
-  edusheet-ai-logs-{env}        private, access logs
+  learnfyra-{env}-s3-worksheets  private, presigned URLs, 7-day lifecycle
+  learnfyra-{env}-s3-frontend    public read, CloudFront origin
+  learnfyra-{env}-s3-logs        private, access logs
 
 AWS Secrets Manager:
-  edusheet-ai/{env}/secrets → ANTHROPIC_API_KEY, ALLOWED_ORIGIN
+  learnfyra/{env}/anthropic-api-key → ANTHROPIC_API_KEY, ALLOWED_ORIGIN
 ```
 
 GitHub Actions workflow files to create:
@@ -640,7 +640,7 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
       - run: npm ci && npm test
       - run: cd infra && npm ci && npx cdk deploy --context env=dev --require-approval never
-      - run: aws s3 sync frontend/ s3://edusheet-ai-frontend-dev/ --delete
+      - run: aws s3 sync frontend/ s3://learnfyra-dev-s3-frontend/ --delete
 ```
 
 GitHub repository secrets required:
@@ -659,7 +659,7 @@ DevOps rules:
 - Production deploy requires manual approval job in GitHub Actions
 - All Lambda functions get CloudWatch alarms: error rate > 1%, p99 latency > 10s
 - S3 buckets have versioning enabled on prod
-- Tag all AWS resources: Project=edusheet-ai, Env={env}, ManagedBy=cdk
+- Tag all AWS resources: Project=learnfyra, Env={env}, ManagedBy=cdk
 
 ---
 
@@ -682,16 +682,16 @@ infra/
   tsconfig.json
   cdk.json
   bin/
-    edusheet-ai.ts        CDK app entry point
+    learnfyra.ts          CDK app entry point
   lib/
-    edusheet-ai-stack.ts  main stack
+    learnfyra-stack.ts    main stack
     constructs/
       storage.ts          S3 buckets
       api.ts              API Gateway + Lambda functions
       cdn.ts              CloudFront distribution
       secrets.ts          Secrets Manager
   test/
-    edusheet-ai.test.ts   CDK assertions tests
+    learnfyra.test.ts     CDK assertions tests
 ```
 
 CDK stack conventions:
@@ -701,19 +701,19 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 
-interface EduSheetProps extends cdk.StackProps {
+interface LearnfyraStackProps extends cdk.StackProps {
   env: 'dev' | 'staging' | 'prod';
 }
 
-export class EduSheetAiStack extends cdk.Stack {
-  constructor(scope: cdk.App, id: string, props: EduSheetProps) {
+export class LearnfyraStack extends cdk.Stack {
+  constructor(scope: cdk.App, id: string, props: LearnfyraStackProps) {
     super(scope, id, props);
 
     const isProd = props.env === 'prod';
     const removalPolicy = isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
 
     // Tag everything
-    cdk.Tags.of(this).add('Project', 'edusheet-ai');
+    cdk.Tags.of(this).add('Project', 'learnfyra');
     cdk.Tags.of(this).add('Env', props.env);
     cdk.Tags.of(this).add('ManagedBy', 'cdk');
   }
@@ -724,7 +724,7 @@ Lambda construct pattern:
 ```typescript
 // Always ARM_64 — cheaper and faster than x86
 const generateFn = new NodejsFunction(this, 'GenerateFunction', {
-  functionName: `edusheet-generate-${props.env}`,
+  functionName: `learnfyra-generate-${props.env}`,
   entry: '../backend/handlers/generateHandler.js',
   handler: 'handler',
   runtime: lambda.Runtime.NODEJS_18_X,
@@ -750,7 +750,7 @@ worksheetBucket.grantRead(generateFn);
 
 // Inject API key from Secrets Manager
 const secret = secretsmanager.Secret.fromSecretNameV2(
-  this, 'AnthropicKey', `edusheet-ai/${props.env}/secrets`
+  this, 'AnthropicKey', `learnfyra/${props.env}/anthropic-api-key`
 );
 secret.grantRead(generateFn);
 generateFn.addEnvironment('SECRET_ARN', secret.secretArn);
@@ -759,7 +759,7 @@ generateFn.addEnvironment('SECRET_ARN', secret.secretArn);
 S3 bucket pattern:
 ```typescript
 const worksheetBucket = new s3.Bucket(this, 'WorksheetBucket', {
-  bucketName: `edusheet-ai-worksheets-${props.env}`,
+  bucketName: `learnfyra-${props.env}-s3-worksheets`,
   removalPolicy,
   autoDeleteObjects: !isProd,
   versioned: isProd,

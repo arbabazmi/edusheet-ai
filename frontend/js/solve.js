@@ -1,6 +1,6 @@
 /**
  * @file frontend/js/solve.js
- * @description EduSheet AI — Online Solve page logic.
+ * @description Learnfyra — Online Solve page logic.
  *
  * Responsibilities:
  *  - Reads worksheetId from URL query string (?id=...)
@@ -108,7 +108,7 @@ async function loadWorksheet() {
       data.difficulty || '',
     ].filter(Boolean);
     worksheetMeta.textContent = parts.join(' \u00b7 ');
-    document.title = `${data.subject || 'Worksheet'} \u2014 EduSheet AI`;
+    document.title = `${data.subject || 'Worksheet'} \u2014 Learnfyra`;
 
     // Update mode selection copy
     modeTitleText.textContent = `Ready to solve?`;

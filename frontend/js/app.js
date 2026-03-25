@@ -1,6 +1,6 @@
 /**
  * @file frontend/js/app.js
- * @description EduSheet AI — single-page worksheet generator frontend.
+ * @description Learnfyra — single-page worksheet generator frontend.
  *
  * Responsibilities:
  *  - Populates Grade / Subject / Topic dropdowns from embedded curriculum data
