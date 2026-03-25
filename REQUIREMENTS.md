@@ -1,14 +1,14 @@
-# 📚 EduSheet AI — Worksheet Generator
+# Learnfyra — Worksheet Generator
 ## Claude Code Agent Requirements Document
 ### Project: USA K-10 AI-Powered Worksheet Generator
-**GitHub Repo:** `arbabazmi/edusheet-ai`
+**GitHub Repo:** `arbabazmi/learnfyra`
 **Version:** 1.0.0 | **Date:** March 2026
 
 ---
 
 ## 1. Project Overview
 
-EduSheet AI is a **command-line application** that uses the Anthropic Claude API to dynamically generate curriculum-aligned, printable worksheets for students in **Grades 1–10** across all major USA subjects. Each worksheet is fully AI-generated (no static content), downloadable in **PDF**, **Word (.docx)**, and **printable HTML** formats, and includes a **separate Answer Key** document.
+Learnfyra is a **command-line application** that uses the Anthropic Claude API to dynamically generate curriculum-aligned, printable worksheets for students in **Grades 1–10** across all major USA subjects. Each worksheet is fully AI-generated (no static content), downloadable in **PDF**, **Word (.docx)**, and **printable HTML** formats, and includes a **separate Answer Key** document.
 
 The application is designed to run **locally** first, with a clean architecture that makes adding a web frontend easy in a future phase.
 
@@ -18,16 +18,16 @@ The application is designed to run **locally** first, with a clean architecture 
 
 | Field | Value |
 |---|---|
-| **Repo Name** | `edusheet-ai` |
-| **GitHub URL** | `https://github.com/arbabazmi/edusheet-ai` |
+| **Repo Name** | `learnfyra` |
+| **GitHub URL** | `https://github.com/arbabazmi/learnfyra` |
 | **Visibility** | Public (free downloads for all users) |
 | **License** | MIT |
 | **Node version** | >=18.x |
 
-### Why `edusheet-ai`?
+### Why `learnfyra`?
 - Short, memorable, brandable
-- Clearly communicates the product (education + AI + sheets)
-- Works as a future domain name: `edusheet.ai`
+- Clearly communicates the product (learning + fyra)
+- Works as a future domain name: `learnfyra.com`
 - Unique enough to stand out on GitHub
 
 ---
@@ -209,7 +209,7 @@ node index.js --batch batch_config.json
 ## 7. Project Structure
 
 ```
-edusheet-ai/
+learnfyra/
 ├── index.js                  # CLI entry point
 ├── package.json
 ├── .env.example              # ANTHROPIC_API_KEY=your_key_here
@@ -420,7 +420,7 @@ The codebase must be structured so that `src/ai/` and `src/exporters/` can be re
 Paste these into Claude Code to build the project step by step:
 
 ```
-1. "Initialize the edusheet-ai Node.js project with the structure defined 
+1. "Initialize the learnfyra Node.js project with the structure defined
    in the requirements. Set up package.json, .env.example, .gitignore, 
    and install all dependencies."
 
@@ -463,9 +463,9 @@ The application is complete when:
 - [ ] Batch mode works via JSON config
 - [ ] All unit and integration tests pass (`npm test`)
 - [ ] Test coverage ≥ 80%
-- [ ] Repository is public on `github.com/arbabazmi/edusheet-ai`
+- [ ] Repository is public on `github.com/arbabazmi/learnfyra`
 - [ ] README enables any user to set up and run in under 5 minutes
 
 ---
 
-*Document prepared for Claude Code Agent | EduSheet AI v1.0 | March 2026*
+*Document prepared for Claude Code Agent | Learnfyra v1.0 | March 2026*

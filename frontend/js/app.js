@@ -1,6 +1,6 @@
 /**
  * @file frontend/js/app.js
- * @description EduSheet AI — single-page worksheet generator frontend.
+ * @description Learnfyra — single-page worksheet generator frontend.
  *
  * Responsibilities:
  *  - Populates Grade / Subject / Topic dropdowns from embedded curriculum data
@@ -306,6 +306,19 @@ function showResults(data, requestedAnswerKey, selectedFormat) {
   if (requestedAnswerKey && answerKeyKey) {
     const answerKeyBtn = buildAnswerKeyButton(answerKeyKey);
     downloadButtons.appendChild(answerKeyBtn);
+  }
+
+  /* Solve Online button — always shown when a worksheetId is available */
+  if (metadata && metadata.id) {
+    const solveBtn = document.createElement('button');
+    solveBtn.type = 'button';
+    solveBtn.className = 'btn btn--solve download-btn';
+    solveBtn.textContent = 'Solve Online';
+    solveBtn.setAttribute('role', 'listitem');
+    solveBtn.addEventListener('click', () => {
+      window.open(`/solve.html?id=${metadata.id}`, '_blank', 'noopener,noreferrer');
+    });
+    downloadButtons.appendChild(solveBtn);
   }
 
   loadingSection.hidden = true;

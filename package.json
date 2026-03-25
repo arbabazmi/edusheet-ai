@@ -1,5 +1,5 @@
 {
-  "name": "edusheet-ai",
+  "name": "learnfyra",
   "version": "1.0.0",
   "description": "AI-powered USA curriculum worksheet generator for Grades 1–10",
   "type": "module",
@@ -71,6 +71,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/arbabazmi/edusheet-ai.git"
+    "url": "https://github.com/arbabazmi/learnfyra.git"
   }
 }
