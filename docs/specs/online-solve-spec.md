@@ -1219,6 +1219,13 @@ Files to CREATE:
 - tests/fixtures/solveWorksheet.json (hand-crafted fixture with all 7 question types including
   matching, with answer fields in clean letter-only format pending OQ-1 resolution)
 
+---
+
+## Implementation Readiness References
+
+1. Local and AWS parity strategy: [docs/LOCAL_DEV_STRATEGY.md](docs/LOCAL_DEV_STRATEGY.md)
+2. Implementation checklist: [docs/IMPLEMENTATION_READINESS_CHECKLIST.md](docs/IMPLEMENTATION_READINESS_CHECKLIST.md)
+
 ## Appendix: Open Question Resolution Checklist
 
 Before DEV begins implementation, the following must be decided:

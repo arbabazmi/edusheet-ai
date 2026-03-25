@@ -535,3 +535,10 @@ If the team continues design work before implementation, the next documents shou
 This document defines the agreed baseline for the redesign branch. It is intentionally stricter than the aspirational product ideas in the BA document and intentionally narrower than stretch concepts that would require JavaScript or backend work.
 
 Use this file as the implementation gatekeeper.
+
+---
+
+## Implementation Readiness References
+
+1. Local and AWS parity strategy: [docs/LOCAL_DEV_STRATEGY.md](docs/LOCAL_DEV_STRATEGY.md)
+2. Implementation checklist: [docs/IMPLEMENTATION_READINESS_CHECKLIST.md](docs/IMPLEMENTATION_READINESS_CHECKLIST.md)
