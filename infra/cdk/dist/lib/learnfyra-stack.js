@@ -215,7 +215,7 @@ class LearnfyraStack extends cdk.Stack {
         });
         // ── SSM: Anthropic API key ─────────────────────────────────────────────────
         const anthropicKeyParam = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'AnthropicApiKey', { parameterName: `/learnfyra/${appEnv}/anthropic-api-key` });
-        const jwtSecretParam = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'JwtSecret', { parameterName: `/learnfyra/${appEnv}/jwt-secret` });
+        const jwtSecretValue = ssm.StringParameter.valueForStringParameter(this, `/learnfyra/${appEnv}/jwt-secret`);
         const allowedOrigin = enableCustomDomains ? `https://${webDomainName}` : '*';
         // Shared esbuild bundling options — bundles handler + all src/ imports into
         // a single CJS file. @aws-sdk/* is excluded (provided by the Lambda runtime).
@@ -464,8 +464,7 @@ class LearnfyraStack extends cdk.Stack {
         [authFn, progressFn, analyticsFn, classFn, rewardsFn, studentFn].forEach((fn) => {
             fn.addEnvironment('AUTH_MODE', 'mock');
             fn.addEnvironment('APP_RUNTIME', 'local');
-            fn.addEnvironment('JWT_SECRET', jwtSecretParam.stringValue);
-            jwtSecretParam.grantRead(fn);
+            fn.addEnvironment('JWT_SECRET', jwtSecretValue);
         });
         [generateFn, adminFn].forEach((fn) => {
             fn.addEnvironment('QB_ADAPTER', 'local');
@@ -627,7 +626,7 @@ class LearnfyraStack extends cdk.Stack {
                 alarmDescription: `${id} Lambda p95 duration exceeded ${p95MsThreshold}ms in ${appEnv}`,
             });
             const errorRateMetric = new cloudwatch.MathExpression({
-                expression: '100 * errors / MAX([invocations, 1])',
+                expression: '100 * errors / IF(invocations > 0, invocations, 1)',
                 label: `${id} Error Rate %`,
                 period: cdk.Duration.minutes(5),
                 usingMetrics: {
