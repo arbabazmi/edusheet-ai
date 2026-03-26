@@ -22,6 +22,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const LOCAL_FILES_DIR = join(__dirname, 'worksheets-local');
 
+// Shared CORS headers applied on every response (success and error paths)
+const CORS_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': CORS_ORIGIN,
+  'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+};
+
 // ── Validate required env vars ────────────────────────────────────────────────
 if (!process.env.ANTHROPIC_API_KEY) {
   console.warn('\nWARNING: ANTHROPIC_API_KEY is not set.');
@@ -289,11 +297,10 @@ app.post('/api/auth/register', async (req, res) => {
       { httpMethod: 'POST', path: '/api/auth/register', headers: req.headers, body: JSON.stringify(req.body) },
       {},
     );
-    res.status(result.statusCode).json(JSON.parse(result.body));
+    res.set(corsHeaders).status(result.statusCode).json(JSON.parse(result.body));
   } catch (err) {
     console.error('auth route error:', err);
-    res.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
-    res.status(500).json({ error: 'Internal server error.' });
+    res.set(corsHeaders).status(500).json({ error: 'Internal server error.' });
   }
 });
 
@@ -305,11 +312,10 @@ app.post('/api/auth/login', async (req, res) => {
       { httpMethod: 'POST', path: '/api/auth/login', headers: req.headers, body: JSON.stringify(req.body) },
       {},
     );
-    res.status(result.statusCode).json(JSON.parse(result.body));
+    res.set(corsHeaders).status(result.statusCode).json(JSON.parse(result.body));
   } catch (err) {
     console.error('auth route error:', err);
-    res.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
-    res.status(500).json({ error: 'Internal server error.' });
+    res.set(corsHeaders).status(500).json({ error: 'Internal server error.' });
   }
 });
 
@@ -321,11 +327,51 @@ app.post('/api/auth/logout', async (req, res) => {
       { httpMethod: 'POST', path: '/api/auth/logout', headers: req.headers, body: JSON.stringify(req.body) },
       {},
     );
-    res.status(result.statusCode).json(JSON.parse(result.body));
+    res.set(corsHeaders).status(result.statusCode).json(JSON.parse(result.body));
   } catch (err) {
     console.error('auth route error:', err);
-    res.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
-    res.status(500).json({ error: 'Internal server error.' });
+    res.set(corsHeaders).status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ── POST /api/auth/oauth/:provider ────────────────────────────────────────────
+app.post('/api/auth/oauth/:provider', async (req, res) => {
+  try {
+    const fn = await getAuthHandler();
+    const result = await fn(
+      {
+        httpMethod: 'POST',
+        path: `/api/auth/oauth/${req.params.provider}`,
+        headers: req.headers,
+        body: JSON.stringify(req.body),
+      },
+      {},
+    );
+    res.set(corsHeaders).status(result.statusCode).json(JSON.parse(result.body));
+  } catch (err) {
+    console.error('auth oauth route error:', err);
+    res.set(corsHeaders).status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ── GET /api/auth/callback/:provider ──────────────────────────────────────────
+app.get('/api/auth/callback/:provider', async (req, res) => {
+  try {
+    const fn = await getAuthHandler();
+    const result = await fn(
+      {
+        httpMethod: 'GET',
+        path: `/api/auth/callback/${req.params.provider}`,
+        headers: req.headers,
+        body: null,
+        queryStringParameters: req.query,
+      },
+      {},
+    );
+    res.set(corsHeaders).status(result.statusCode).json(JSON.parse(result.body));
+  } catch (err) {
+    console.error('auth callback route error:', err);
+    res.set(corsHeaders).status(500).json({ error: 'Internal server error.' });
   }
 });
 

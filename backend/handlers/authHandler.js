@@ -3,20 +3,25 @@
  * @description Lambda-compatible handler for authentication routes.
  *
  * Routes (differentiated by event.path suffix):
- *   POST /api/auth/register  — create a new user account
- *   POST /api/auth/login     — verify credentials and issue a JWT
- *   POST /api/auth/logout    — client-side token invalidation (always 200)
+ *   POST /api/auth/register           — create a new user account
+ *   POST /api/auth/login              — verify credentials and issue a JWT
+ *   POST /api/auth/logout             — client-side token invalidation (always 200)
+ *   POST /api/auth/oauth/:provider    — begin OAuth flow, returns authorizationUrl
+ *   GET  /api/auth/callback/:provider — handle OAuth callback, issues JWT
  *
  * Local dev:  AUTH_MODE unset → mockAuthAdapter (bcrypt + local JSON)
+ *             OAuth:           oauthStubAdapter (stub, no real provider credentials needed)
  * Lambda/AWS: AUTH_MODE=cognito → Cognito adapter (not yet implemented)
  */
 
 import { randomUUID } from 'crypto';
 import { getAuthAdapter } from '../../src/auth/index.js';
+import { oauthStubAdapter } from '../../src/auth/oauthStubAdapter.js';
+import { getDbAdapter } from '../../src/db/index.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || '*',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 };
 
@@ -45,7 +50,8 @@ function errorResponse(statusCode, message) {
  * @returns {Promise<{ statusCode: number, headers: Object, body: string }>}
  */
 async function handleRegister(body) {
-  const { email, password, role, displayName } = body || {};
+  const { email: rawEmail, password, role, displayName } = body || {};
+  const email = rawEmail ? rawEmail.toLowerCase().trim() : rawEmail;
 
   if (!email || !password || !role || !displayName) {
     return errorResponse(400, 'email, password, role, and displayName are required.');
@@ -100,7 +106,6 @@ async function handleLogin(body) {
   // findUserByEmail returns a public user (no passwordHash); we need the raw
   // record to verify the password. The mock adapter exposes verifyPassword
   // separately so we look the raw user up via queryByField on the db adapter.
-  const { getDbAdapter } = await import('../../src/db/index.js');
   const db = getDbAdapter();
   const matches = await db.queryByField('users', 'email', email.toLowerCase().trim());
   const rawUser = matches.length > 0 ? matches[0] : null;
@@ -146,6 +151,64 @@ function handleLogout() {
 }
 
 /**
+ * POST /api/auth/oauth/:provider
+ * Initiates an OAuth flow. Returns the provider's authorization URL so the
+ * client can redirect the user.
+ * Body: optional (provider is taken from the URL path)
+ * Returns: { authorizationUrl, state } (200)
+ *
+ * @param {string} provider - OAuth provider identifier ('google' | 'github')
+ * @returns {Promise<{ statusCode: number, headers: Object, body: string }>}
+ */
+async function handleOAuthInitiate(provider) {
+  if (!provider) {
+    return errorResponse(400, 'OAuth provider is required.');
+  }
+
+  const result = await oauthStubAdapter.initiateOAuth(provider);
+
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: JSON.stringify(result),
+  };
+}
+
+/**
+ * GET /api/auth/callback/:provider
+ * Handles the OAuth provider callback. Accepts the authorization code,
+ * looks up or creates the user, and issues a JWT.
+ * Query params: { code, state }
+ * Returns: { userId, email, role, displayName, token } (200)
+ *
+ * @param {string} provider - OAuth provider identifier ('google' | 'github')
+ * @param {Object} queryStringParameters - Query params from the callback URL
+ * @returns {Promise<{ statusCode: number, headers: Object, body: string }>}
+ *
+ * @note OAuth state parameter CSRF validation is the responsibility of the
+ * production adapter. The stub adapter skips it — see oauthStubAdapter.js.
+ */
+async function handleOAuthCallback(provider, queryStringParameters) {
+  if (!provider) {
+    return errorResponse(400, 'OAuth provider is required.');
+  }
+
+  const { code, state } = queryStringParameters || {};
+
+  if (!code) {
+    return errorResponse(400, 'OAuth authorization code is required.');
+  }
+
+  const result = await oauthStubAdapter.handleCallback(provider, code, state);
+
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: JSON.stringify(result),
+  };
+}
+
+/**
  * Lambda handler — POST /api/auth/:action
  *
  * @param {Object} event - API Gateway event or Express-shaped mock event
@@ -153,9 +216,7 @@ function handleLogout() {
  * @returns {Promise<{ statusCode: number, headers: Object, body: string }>}
  */
 export const handler = async (event, context) => {
-  if (context?.callbackWaitsForEmptyEventLoop !== undefined) {
-    context.callbackWaitsForEmptyEventLoop = false;
-  }
+  context.callbackWaitsForEmptyEventLoop = false;
 
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: corsHeaders, body: '' };
@@ -170,6 +231,7 @@ export const handler = async (event, context) => {
     }
 
     const path = event.path || event.routeKey || '';
+    const method = event.httpMethod || 'POST';
 
     if (path.endsWith('/register')) {
       return await handleRegister(body);
@@ -181,6 +243,21 @@ export const handler = async (event, context) => {
 
     if (path.endsWith('/logout')) {
       return handleLogout();
+    }
+
+    // POST /api/auth/oauth/:provider — initiate OAuth flow
+    const oauthInitMatch = path.match(/\/oauth\/([^/]+)$/);
+    if (oauthInitMatch && method === 'POST') {
+      return await handleOAuthInitiate(oauthInitMatch[1]);
+    }
+
+    // GET /api/auth/callback/:provider — handle OAuth callback
+    const callbackMatch = path.match(/\/callback\/([^/]+)$/);
+    if (callbackMatch && method === 'GET') {
+      return await handleOAuthCallback(
+        callbackMatch[1],
+        event.queryStringParameters || {},
+      );
     }
 
     return errorResponse(404, 'Route not found.');

@@ -1,7 +1,7 @@
 /**
  * @file tests/unit/authHandler.test.js
  * @description Unit tests for backend/handlers/authHandler.js
- * Auth and DB adapters are mocked to avoid real I/O or network calls.
+ * Auth, OAuth, and DB adapters are mocked to avoid real I/O or network calls.
  * @agent QA
  */
 
@@ -20,6 +20,11 @@ const mockVerifyPassword = jest.fn();
 const mockGenerateToken = jest.fn();
 const mockVerifyToken   = jest.fn();
 
+// ─── Mock OAuth stub adapter methods ─────────────────────────────────────────
+
+const mockInitiateOAuth   = jest.fn();
+const mockHandleCallback  = jest.fn();
+
 // ─── Mock DB adapter methods ──────────────────────────────────────────────────
 
 const mockPutItem       = jest.fn();
@@ -36,6 +41,15 @@ jest.unstable_mockModule('../../src/auth/index.js', () => ({
     generateToken:   mockGenerateToken,
     verifyToken:     mockVerifyToken,
   })),
+}));
+
+// ─── Mock ../../src/auth/oauthStubAdapter.js BEFORE any dynamic import ───────
+
+jest.unstable_mockModule('../../src/auth/oauthStubAdapter.js', () => ({
+  oauthStubAdapter: {
+    initiateOAuth:  mockInitiateOAuth,
+    handleCallback: mockHandleCallback,
+  },
 }));
 
 // ─── Mock ../../src/db/index.js BEFORE any dynamic import ────────────────────
@@ -419,6 +433,272 @@ describe('authHandler — POST /api/auth/logout', () => {
   it('CORS headers are present on logout response', async () => {
     const result = await handler(
       mockPostEvent('/api/auth/logout', {}),
+      mockContext,
+    );
+    expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
+  });
+
+});
+
+// ─── POST /api/auth/oauth/:provider — happy path ──────────────────────────────
+
+describe('authHandler — POST /api/auth/oauth/:provider happy path', () => {
+
+  beforeEach(() => {
+    mockInitiateOAuth.mockResolvedValue({
+      authorizationUrl: 'https://stub-oauth.learnfyra.local/auth/google?state=test-state',
+      state: 'test-state',
+    });
+  });
+
+  it('returns 200 for a supported OAuth provider', async () => {
+    const result = await handler(
+      { httpMethod: 'POST', path: '/api/auth/oauth/google', headers: {}, body: '{}' },
+      mockContext,
+    );
+    expect(result.statusCode).toBe(200);
+  });
+
+  it('response body contains authorizationUrl and state', async () => {
+    const result = await handler(
+      { httpMethod: 'POST', path: '/api/auth/oauth/google', headers: {}, body: '{}' },
+      mockContext,
+    );
+    const body = JSON.parse(result.body);
+    expect(body).toHaveProperty('authorizationUrl');
+    expect(body).toHaveProperty('state');
+  });
+
+  it('calls initiateOAuth with the correct provider', async () => {
+    await handler(
+      { httpMethod: 'POST', path: '/api/auth/oauth/github', headers: {}, body: '{}' },
+      mockContext,
+    );
+    expect(mockInitiateOAuth).toHaveBeenCalledWith('github');
+  });
+
+  it('CORS headers are present on oauth initiate response', async () => {
+    const result = await handler(
+      { httpMethod: 'POST', path: '/api/auth/oauth/google', headers: {}, body: '{}' },
+      mockContext,
+    );
+    expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
+  });
+
+});
+
+// ─── POST /api/auth/oauth/:provider — unsupported provider ───────────────────
+
+describe('authHandler — POST /api/auth/oauth/:provider unsupported provider', () => {
+
+  beforeEach(() => {
+    const err = new Error('OAuth provider "facebook" is not supported.');
+    err.statusCode = 400;
+    mockInitiateOAuth.mockRejectedValue(err);
+  });
+
+  it('returns 400 when initiateOAuth throws with statusCode 400', async () => {
+    const result = await handler(
+      { httpMethod: 'POST', path: '/api/auth/oauth/facebook', headers: {}, body: '{}' },
+      mockContext,
+    );
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('CORS headers are present on 400 oauth response', async () => {
+    const result = await handler(
+      { httpMethod: 'POST', path: '/api/auth/oauth/facebook', headers: {}, body: '{}' },
+      mockContext,
+    );
+    expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
+  });
+
+});
+
+// ─── GET /api/auth/callback/:provider — happy path ───────────────────────────
+
+describe('authHandler — GET /api/auth/callback/:provider happy path', () => {
+
+  const callbackUser = {
+    userId: VALID_STUDENT_ID,
+    email: 'oauth-google-abc123@stub.learnfyra.local',
+    role: 'student',
+    displayName: 'Google User',
+    token: 'oauth-jwt-token',
+  };
+
+  beforeEach(() => {
+    mockHandleCallback.mockResolvedValue(callbackUser);
+  });
+
+  it('returns 200 when callback code is valid', async () => {
+    const result = await handler(
+      {
+        httpMethod: 'GET',
+        path: '/api/auth/callback/google',
+        headers: {},
+        body: null,
+        queryStringParameters: { code: 'abc123', state: 'test-state' },
+      },
+      mockContext,
+    );
+    expect(result.statusCode).toBe(200);
+  });
+
+  it('response body contains userId, email, role, and token', async () => {
+    const result = await handler(
+      {
+        httpMethod: 'GET',
+        path: '/api/auth/callback/google',
+        headers: {},
+        body: null,
+        queryStringParameters: { code: 'abc123', state: 'test-state' },
+      },
+      mockContext,
+    );
+    const body = JSON.parse(result.body);
+    expect(body).toHaveProperty('userId', VALID_STUDENT_ID);
+    expect(body).toHaveProperty('token', 'oauth-jwt-token');
+    expect(body).toHaveProperty('role', 'student');
+  });
+
+  it('calls handleCallback with provider, code, and state', async () => {
+    await handler(
+      {
+        httpMethod: 'GET',
+        path: '/api/auth/callback/github',
+        headers: {},
+        body: null,
+        queryStringParameters: { code: 'xyz789', state: 'some-state' },
+      },
+      mockContext,
+    );
+    expect(mockHandleCallback).toHaveBeenCalledWith('github', 'xyz789', 'some-state');
+  });
+
+  it('CORS headers are present on callback response', async () => {
+    const result = await handler(
+      {
+        httpMethod: 'GET',
+        path: '/api/auth/callback/google',
+        headers: {},
+        body: null,
+        queryStringParameters: { code: 'abc123', state: 'test-state' },
+      },
+      mockContext,
+    );
+    expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
+  });
+
+});
+
+// ─── GET /api/auth/callback/:provider — missing code ─────────────────────────
+
+describe('authHandler — GET /api/auth/callback/:provider missing code', () => {
+
+  it('returns 400 when code query param is absent', async () => {
+    const result = await handler(
+      {
+        httpMethod: 'GET',
+        path: '/api/auth/callback/google',
+        headers: {},
+        body: null,
+        queryStringParameters: {},
+      },
+      mockContext,
+    );
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('CORS headers are present on 400 callback response', async () => {
+    const result = await handler(
+      {
+        httpMethod: 'GET',
+        path: '/api/auth/callback/google',
+        headers: {},
+        body: null,
+        queryStringParameters: {},
+      },
+      mockContext,
+    );
+    expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
+  });
+
+});
+
+// ─── Unknown route ────────────────────────────────────────────────────────────
+
+describe('authHandler — unknown route', () => {
+
+  it('returns 404 for an unrecognised path', async () => {
+    const result = await handler(
+      { httpMethod: 'POST', path: '/api/auth/unknown-action', headers: {}, body: '{}' },
+      mockContext,
+    );
+    expect(result.statusCode).toBe(404);
+  });
+
+  it('CORS headers are present on 404 response', async () => {
+    const result = await handler(
+      { httpMethod: 'POST', path: '/api/auth/unknown-action', headers: {}, body: '{}' },
+      mockContext,
+    );
+    expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
+  });
+
+});
+
+// ─── Lambda context — callbackWaitsForEmptyEventLoop ─────────────────────────
+
+describe('authHandler — Lambda context guard', () => {
+
+  it('sets context.callbackWaitsForEmptyEventLoop to false on every invocation', async () => {
+    const ctx = { callbackWaitsForEmptyEventLoop: true };
+    await handler({ httpMethod: 'OPTIONS' }, ctx);
+    expect(ctx.callbackWaitsForEmptyEventLoop).toBe(false);
+  });
+
+});
+
+// ─── Malformed JSON body ──────────────────────────────────────────────────────
+
+describe('authHandler — malformed JSON body', () => {
+
+  it('returns 400 when the request body is not valid JSON', async () => {
+    const result = await handler(
+      {
+        httpMethod: 'POST',
+        path: '/api/auth/register',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{ bad json :::',
+      },
+      mockContext,
+    );
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('error body mentions invalid JSON on malformed body', async () => {
+    const result = await handler(
+      {
+        httpMethod: 'POST',
+        path: '/api/auth/login',
+        headers: {},
+        body: 'not-json-at-all',
+      },
+      mockContext,
+    );
+    const body = JSON.parse(result.body);
+    expect(body.error).toMatch(/invalid json/i);
+  });
+
+  it('CORS headers are present on 400 malformed JSON response', async () => {
+    const result = await handler(
+      {
+        httpMethod: 'POST',
+        path: '/api/auth/register',
+        headers: {},
+        body: '{{{',
+      },
       mockContext,
     );
     expect(result.headers['Access-Control-Allow-Origin']).toBeDefined();
