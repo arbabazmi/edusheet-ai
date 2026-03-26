@@ -8,6 +8,29 @@ This document gives you ready-to-paste prompts you can run one by one in Claude 
 - Run prompts in the exact order below.
 - Complete each step before moving to the next.
 
+## Full Folder Technical Refresh Prompt (Use Before Planning)
+Paste this first when you want a complete docs refresh with done/pending technical status:
+
+Use program-orchestrator-agent in standard mode.
+
+Task:
+Refresh the complete technical documentation status for this repository and update:
+1. docs/operations/NEXT_PHASE_MASTER_DOSSIER.md
+2. docs/operations/NEXT_PHASE_EXECUTION_BACKLOG.md
+3. docs/operations/NEXT_PHASE_AGENT_PROMPTS.md
+
+Required coverage:
+1. All workflows and architecture baseline
+2. Completed vs pending matrix for each major stream
+3. Full technology inventory (runtime, backend, frontend, data, testing, AWS infra)
+4. P0/P1/P2 actionable backlog with owner and test hooks
+5. Go/no-go gate and explicit blockers
+
+Constraints:
+1. Keep output execution-ready and concise
+2. Preserve local-first strategy
+3. Do not invent implementation; derive from code and canonical docs
+
 ## Start Development Now (Copy/Paste)
 Use this prompt if you want Claude Code to begin development immediately:
 

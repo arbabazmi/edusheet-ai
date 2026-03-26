@@ -127,6 +127,27 @@
 
 ---
 
+### 5. Completion Certificates (Download Option)
+
+#### Certificate Trigger Rules
+- Show "Download Certificate" when student completes worksheet with:
+  - score >= 70%
+  - question count >= 5
+- Certificate includes: student name, worksheet topic, score, date, teacher/class (if available)
+
+#### Certificate Types
+- **Basic PDF Certificate (MVP)**: generated on demand from results page
+- **Persistent Certificate (Phase 2)**: stored and re-downloadable from student profile/history
+- **Verifiable Certificate (Phase 3)**: includes verification code/URL
+
+#### Certificate Display Rules
+- Student can download own certificate.
+- Teacher can view issued certificates for their class.
+- Parent can view linked child's certificates.
+- Guest mode does not create persistent certificates by default.
+
+---
+
 ## Anti-Gaming Rules
 
 ### 1. Attempt Throttling
@@ -229,6 +250,17 @@
 **Then** their badge collection still displays "Week Warrior"  
 **And** DynamoDB stores badges in student profile record  
 **And** S3 serves badge icon images via CloudFront CDN
+
+### AC10: Completion Certificate Download
+**Given** an authenticated student completes a worksheet with score >= 70% and >= 5 questions  
+**When** results page is displayed  
+**Then** a "Download Certificate" button is visible  
+**And** clicking it downloads a valid PDF certificate.
+
+### AC11: Certificate Access Authorization
+**Given** a user attempts to access a certificate not in their authorized scope  
+**When** certificate download API is called  
+**Then** access is denied with authorization error.
 
 ---
 

@@ -19,17 +19,34 @@ Define the single source of truth for each major module so agent team mode can e
 4. Reward engagement: [reward-engagement-flow-spec.md](reward-engagement-flow-spec.md)
 5. Super admin model control plane: [super-admin-model-control-plane-spec.md](super-admin-model-control-plane-spec.md)
 6. Super admin platform operations center: [super-admin-platform-operations-spec.md](super-admin-platform-operations-spec.md)
+7. Auth-first platform module breakdown (discussion draft): [platform-module-breakdown-auth-first.md](platform-module-breakdown-auth-first.md)
+8. API security, authentication, authorization, and guest mode: [api-security-auth-model.md](api-security-auth-model.md)
+9. Completion certificate options: [certificate-completion-options.md](certificate-completion-options.md)
 
 ---
 
 ## Canonical Companion Docs
 
 1. Admin operations runbook: [../operations/admin-control-plane-operations-spec.md](../operations/admin-control-plane-operations-spec.md)
+2. Dual-agent execution plan: [../operations/DUAL_AGENT_EXECUTION_PLAN.md](../operations/DUAL_AGENT_EXECUTION_PLAN.md)
 2. QA for online/auth/reward/admin modules:
 3. [../qa/ui-redesign-qa-spec.md](../qa/ui-redesign-qa-spec.md)
 4. [../qa/auth-mode-reporting-qa-spec.md](../qa/auth-mode-reporting-qa-spec.md)
 5. [../qa/rewards-gamification-qa-spec.md](../qa/rewards-gamification-qa-spec.md)
 6. [../qa/admin-model-routing-qa-spec.md](../qa/admin-model-routing-qa-spec.md)
+
+---
+
+## Modular Specs (Token-Efficient Work)
+
+1. Index: [modules/README.md](modules/README.md)
+2. Auth and Identity: [modules/M01-auth-identity-spec.md](modules/M01-auth-identity-spec.md)
+3. Question Bank: [modules/M02-question-bank-spec.md](modules/M02-question-bank-spec.md)
+4. Worksheet Generator: [modules/M03-worksheet-generator-spec.md](modules/M03-worksheet-generator-spec.md)
+5. Solve and Submit: [modules/M04-solve-submit-spec.md](modules/M04-solve-submit-spec.md)
+6. Progress and Reporting: [modules/M05-progress-reporting-spec.md](modules/M05-progress-reporting-spec.md)
+7. Class and Relationship Management: [modules/M06-class-relationship-spec.md](modules/M06-class-relationship-spec.md)
+8. Admin Control Plane: [modules/M07-admin-control-plane-spec.md](modules/M07-admin-control-plane-spec.md)
 
 ---
 
