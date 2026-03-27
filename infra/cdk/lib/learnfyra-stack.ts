@@ -58,6 +58,10 @@ export class LearnfyraStack extends cdk.Stack {
     const tracingMode =
       isProd || appEnv === 'staging' ? lambda.Tracing.ACTIVE : lambda.Tracing.DISABLED;
 
+    // Explicit CloudFormation stack description helps ops identify purpose quickly.
+    this.templateOptions.description =
+      `Learnfyra ${appEnv} stack: API, Lambda handlers, Cognito auth, CloudFront, and S3 assets`;
+
     // Google OAuth Client IDs per environment (public identifiers — not secrets)
     const googleClientIds: Record<string, string> = {
       dev:     '1079696386286-m95l3vrmh157sgji4njii0afftoglc9b.apps.googleusercontent.com',
@@ -117,9 +121,13 @@ export class LearnfyraStack extends cdk.Stack {
 
     // ── Tag all resources ─────────────────────────────────────────────────────
     cdk.Tags.of(this).add('Project', 'learnfyra');
+    cdk.Tags.of(this).add('Application', 'learnfyra');
     cdk.Tags.of(this).add('Env', appEnv);
     cdk.Tags.of(this).add('Environment', appEnv);
+    cdk.Tags.of(this).add('Stage', appEnv);
     cdk.Tags.of(this).add('ManagedBy', 'cdk');
+    cdk.Tags.of(this).add('Repository', 'arbabazmi/learnfyra');
+    cdk.Tags.of(this).add('Workload', 'serverless');
 
     // ── S3: Worksheet bucket (private) ────────────────────────────────────────
     const worksheetBucket = new s3.Bucket(this, 'WorksheetBucket', {

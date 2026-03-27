@@ -121,7 +121,7 @@ const fieldErrors = {
 };
 
 const MIN_QUESTION_COUNT = 5;
-const MAX_QUESTION_COUNT = 10;
+const MAX_QUESTION_COUNT = 30;
 
 /* =============================================================
    Dropdown Population Helpers

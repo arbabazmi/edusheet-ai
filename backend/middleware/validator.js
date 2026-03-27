@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file backend/middleware/validator.js
  * @description Validates incoming API Gateway event bodies for worksheet generation
  */
@@ -73,7 +73,7 @@ export function validateGenerateBody(body) {
     throw new Error('Request body must be a JSON object.');
   }
 
-  // grade: required, integer 1–10
+  // grade: required, integer 1â€“10
   const grade = Number(body.grade);
   if (!Number.isInteger(grade) || grade < 1 || grade > 10) {
     throw new Error('grade must be an integer between 1 and 10.');
@@ -101,10 +101,10 @@ export function validateGenerateBody(body) {
     throw new Error(`difficulty must be one of: ${VALID_DIFFICULTIES.join(', ')}.`);
   }
 
-  // questionCount: required, integer 5–10
+  // questionCount: required, integer 5â€“10
   const questionCount = Number(body.questionCount);
-  if (!Number.isInteger(questionCount) || questionCount < 5 || questionCount > 10) {
-    throw new Error('questionCount must be an integer between 5 and 10.');
+  if (!Number.isInteger(questionCount) || questionCount < 5 || questionCount > 30) {
+    throw new Error('questionCount must be an integer between 5 and 30.');
   }
 
   // format: required, one of valid list
