@@ -43,6 +43,26 @@ function normalizeOptionalDate(value) {
 }
 
 /**
+ * Returns a normalized identifier string, or empty when omitted.
+ * @param {unknown} value
+ * @param {string} fieldName
+ * @returns {string}
+ */
+function normalizeOptionalId(value, fieldName) {
+  if (value == null || value === '') return '';
+  if (typeof value !== 'string') {
+    throw new Error(`${fieldName} must be a string.`);
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(trimmed)) {
+    throw new Error(`${fieldName} must be 1-128 characters and use only letters, numbers, underscores, or hyphens.`);
+  }
+  return trimmed;
+}
+
+/**
  * Validates and normalises the parsed request body for POST /api/generate.
  * Throws a descriptive Error with a user-facing message on any violation.
  * @param {Object} body - Parsed JSON body from the Lambda event
@@ -110,6 +130,8 @@ export function validateGenerateBody(body) {
   const period = normalizeOptionalString(body.period, 40);
   const className = normalizeOptionalString(body.className, 80);
   const worksheetDate = normalizeOptionalDate(body.worksheetDate);
+  const studentId = normalizeOptionalId(body.studentId, 'studentId');
+  const parentId = normalizeOptionalId(body.parentId, 'parentId');
 
   return {
     grade,
@@ -126,5 +148,7 @@ export function validateGenerateBody(body) {
     teacherName,
     period,
     className,
+    studentId,
+    parentId,
   };
 }

@@ -856,6 +856,73 @@ app.put('/api/admin/policies/validation-profile', async (req, res) => {
   }
 });
 
+// ── GET /api/admin/policies/repeat-cap ─────────────────────────────────────
+app.get('/api/admin/policies/repeat-cap', async (req, res) => {
+  try {
+    const fn = await getAdminHandler();
+    const result = await fn(
+      {
+        httpMethod: 'GET',
+        path: '/api/admin/policies/repeat-cap',
+        headers: req.headers,
+        body: null,
+        queryStringParameters: req.query,
+        requestContext: { requestId: randomUUID() },
+      },
+      {},
+    );
+    res.status(result.statusCode).json(JSON.parse(result.body));
+  } catch (err) {
+    console.error('admin route error:', err);
+    res.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ── PUT /api/admin/policies/repeat-cap ─────────────────────────────────────
+app.put('/api/admin/policies/repeat-cap', async (req, res) => {
+  try {
+    const fn = await getAdminHandler();
+    const result = await fn(
+      {
+        httpMethod: 'PUT',
+        path: '/api/admin/policies/repeat-cap',
+        headers: req.headers,
+        body: JSON.stringify(req.body),
+        requestContext: { requestId: randomUUID() },
+      },
+      {},
+    );
+    res.status(result.statusCode).json(JSON.parse(result.body));
+  } catch (err) {
+    console.error('admin route error:', err);
+    res.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
+// ── PUT /api/admin/policies/repeat-cap/overrides ───────────────────────────
+app.put('/api/admin/policies/repeat-cap/overrides', async (req, res) => {
+  try {
+    const fn = await getAdminHandler();
+    const result = await fn(
+      {
+        httpMethod: 'PUT',
+        path: '/api/admin/policies/repeat-cap/overrides',
+        headers: req.headers,
+        body: JSON.stringify(req.body),
+        requestContext: { requestId: randomUUID() },
+      },
+      {},
+    );
+    res.status(result.statusCode).json(JSON.parse(result.body));
+  } catch (err) {
+    console.error('admin route error:', err);
+    res.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
+    res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
 // ── GET /api/admin/audit/events ──────────────────────────────────────────────
 app.get('/api/admin/audit/events', async (req, res) => {
   try {

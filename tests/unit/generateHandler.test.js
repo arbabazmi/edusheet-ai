@@ -35,6 +35,18 @@ const mockValidateToken = jest.fn().mockResolvedValue({
   role: 'teacher',
 });
 const mockAssertRole = jest.fn(); // no-op (passes) by default
+const mockDbGetItem = jest.fn();
+const mockDbListAll = jest.fn();
+const mockDbPutItem = jest.fn();
+
+const mockBuildStudentKey = jest.fn().mockReturnValue('student:test-student-1');
+const mockResolveEffectiveRepeatCap = jest.fn().mockResolvedValue({
+  capPercent: 10,
+  appliedBy: 'default',
+  sourceId: null,
+});
+const mockGetSeenQuestionSignatures = jest.fn().mockResolvedValue(new Set());
+const mockRecordExposureHistory = jest.fn().mockResolvedValue(0);
 
 jest.unstable_mockModule('../../backend/middleware/authMiddleware.js', () => ({
   validateToken: mockValidateToken,
@@ -65,6 +77,21 @@ jest.unstable_mockModule('../../src/exporters/index.js', () => ({
 
 jest.unstable_mockModule('../../src/exporters/answerKey.js', () => ({
   exportAnswerKey: jest.fn().mockResolvedValue(['/tmp/answer-key.pdf']),
+}));
+
+jest.unstable_mockModule('../../src/db/index.js', () => ({
+  getDbAdapter: jest.fn(() => ({
+    getItem: mockDbGetItem,
+    listAll: mockDbListAll,
+    putItem: mockDbPutItem,
+  })),
+}));
+
+jest.unstable_mockModule('../../src/ai/repeatCapPolicy.js', () => ({
+  buildStudentKey: mockBuildStudentKey,
+  resolveEffectiveRepeatCap: mockResolveEffectiveRepeatCap,
+  getSeenQuestionSignatures: mockGetSeenQuestionSignatures,
+  recordExposureHistory: mockRecordExposureHistory,
 }));
 
 // Mock fs so readFileSync (used inside uploadToS3) returns a fake buffer
@@ -151,6 +178,10 @@ beforeEach(() => {
   });
   exportWorksheet.mockResolvedValue(['/tmp/worksheet.pdf']);
   exportAnswerKey.mockResolvedValue(['/tmp/answer-key.pdf']);
+  mockBuildStudentKey.mockReturnValue('student:test-student-1');
+  mockResolveEffectiveRepeatCap.mockResolvedValue({ capPercent: 10, appliedBy: 'default', sourceId: null });
+  mockGetSeenQuestionSignatures.mockResolvedValue(new Set());
+  mockRecordExposureHistory.mockResolvedValue(0);
 });
 
 // ─── CORS preflight ───────────────────────────────────────────────────────────

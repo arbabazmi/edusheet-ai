@@ -65,6 +65,11 @@ let _assertRole;
 let _assembleWorksheet;
 let _exportWorksheet;
 let _exportAnswerKey;
+let _getDbAdapter;
+let _buildStudentKey;
+let _resolveEffectiveRepeatCap;
+let _getSeenQuestionSignatures;
+let _recordExposureHistory;
 
 /**
  * Returns validateToken and assertRole from authMiddleware, importing on first call.
@@ -114,6 +119,39 @@ async function getExportAnswerKey() {
     _exportAnswerKey = mod.exportAnswerKey;
   }
   return _exportAnswerKey;
+}
+
+/**
+ * Returns the DB adapter factory, importing on first call.
+ * @returns {Promise<Function>}
+ */
+async function getDbAdapterFactory() {
+  if (!_getDbAdapter) {
+    const mod = await import('../../src/db/index.js');
+    _getDbAdapter = mod.getDbAdapter;
+  }
+  return _getDbAdapter;
+}
+
+/**
+ * Returns repeat-cap helpers, importing on first call.
+ * @returns {Promise<Object>}
+ */
+async function getRepeatCapHelpers() {
+  if (!_buildStudentKey) {
+    const mod = await import('../../src/ai/repeatCapPolicy.js');
+    _buildStudentKey = mod.buildStudentKey;
+    _resolveEffectiveRepeatCap = mod.resolveEffectiveRepeatCap;
+    _getSeenQuestionSignatures = mod.getSeenQuestionSignatures;
+    _recordExposureHistory = mod.recordExposureHistory;
+  }
+
+  return {
+    buildStudentKey: _buildStudentKey,
+    resolveEffectiveRepeatCap: _resolveEffectiveRepeatCap,
+    getSeenQuestionSignatures: _getSeenQuestionSignatures,
+    recordExposureHistory: _recordExposureHistory,
+  };
 }
 
 /** Maps user-facing format names to file extensions */
@@ -191,6 +229,7 @@ function mapGenerationErrorCode(err) {
   if (message.includes('expected exactly')) return 'WG_GENERATION_COUNT_MISMATCH';
   if (message.includes('refused')) return 'WG_GENERATION_REFUSED';
   if (message.includes('validation')) return 'WG_VALIDATION_FAILED';
+  if (message.includes('repeat cap')) return 'WG_REPEAT_CAP_CONSTRAINT';
   if (message.includes('bucket') || message.includes('upload')) return 'WG_UPLOAD_FAILED';
   return 'WG_GENERATION_FAILED';
 }
@@ -377,6 +416,8 @@ export const handler = async (event, context) => {
       teacherName,
       period,
       className,
+      studentId,
+      parentId,
     } = validated;
     const ext = FORMAT_EXT[format];
     const uuid = randomUUID();
@@ -398,6 +439,32 @@ export const handler = async (event, context) => {
       includeAnswerKey,
       generationMode,
       provenanceLevel,
+      hasStudentKeyInput: Boolean(studentId || studentName),
+    });
+
+    // 1.5 Resolve repeat-cap policy and history context before assembly.
+    const getDbAdapter = await getDbAdapterFactory();
+    const db = getDbAdapter();
+    const {
+      buildStudentKey,
+      resolveEffectiveRepeatCap,
+      getSeenQuestionSignatures,
+      recordExposureHistory,
+    } = await getRepeatCapHelpers();
+
+    const studentKey = buildStudentKey({ studentId, studentName, teacherId });
+    const repeatPolicy = await resolveEffectiveRepeatCap({
+      db,
+      studentId,
+      parentId,
+      teacherId,
+    });
+
+    const seenQuestionSignatures = await getSeenQuestionSignatures({
+      db,
+      studentKey,
+      grade,
+      difficulty,
     });
 
         // 2. Assemble worksheet JSON via M03 bank-first pipeline
@@ -411,6 +478,8 @@ export const handler = async (event, context) => {
       questionCount,
       generationMode,
       provenanceLevel,
+      repeatCapPercent: repeatPolicy.capPercent,
+      seenQuestionSignatures,
         });
     logEvent('info', 'generateHandler worksheet generated', {
       requestId,
@@ -463,6 +532,14 @@ export const handler = async (event, context) => {
       worksheetId: uuid,
       generatedAt: now.toISOString(),
       teacherId,
+      studentId: studentId || null,
+      parentId: parentId || null,
+      studentKey,
+      repeatCapPolicy: {
+        effectiveCapPercent: repeatPolicy.capPercent,
+        appliedBy: repeatPolicy.appliedBy,
+        sourceId: repeatPolicy.sourceId,
+      },
       ...worksheet,
     };
     const solveDataKey = `${baseKey}/solve-data.json`;
@@ -507,10 +584,34 @@ export const handler = async (event, context) => {
 
     // 8. Build metadata and return
     stage = 'response:success';
+
+    // Record exposure only after successful generation and storage writes.
+    // Best-effort: generation success should not be rolled back if history write fails.
+    try {
+      await recordExposureHistory({
+        db,
+        studentKey,
+        grade,
+        difficulty,
+        teacherId,
+        parentId,
+        worksheetId: uuid,
+        questions: worksheet.questions,
+      });
+    } catch (historyErr) {
+      logEvent('warn', 'generateHandler exposure history write failed', {
+        requestId,
+        clientRequestId,
+        stage,
+        error: serializeError(historyErr),
+      });
+    }
+
     const metadata = {
       id: uuid,
       solveUrl: `/solve.html?id=${uuid}`,
       generatedAt: now.toISOString(),
+      teacherId,
       grade,
       subject,
       topic,
@@ -518,9 +619,17 @@ export const handler = async (event, context) => {
       questionCount,
       format,
       bankStats,
+      repeatCapPolicy: {
+        effectiveCapPercent: repeatPolicy.capPercent,
+        appliedBy: repeatPolicy.appliedBy,
+        sourceId: repeatPolicy.sourceId,
+        studentTracked: Boolean(studentKey),
+      },
       ...(provenance ? { provenanceSummary: provenance } : {}),
       studentDetails: {
         studentName,
+        studentId,
+        parentId,
         worksheetDate,
         teacherName,
         period,

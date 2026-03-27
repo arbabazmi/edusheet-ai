@@ -31,6 +31,18 @@ const ssmMock = mockClient(SSMClient);
 // Auth middleware stubs
 const mockValidateToken = jest.fn();
 const mockAssertRole    = jest.fn();
+const mockDbGetItem = jest.fn();
+const mockDbListAll = jest.fn();
+const mockDbPutItem = jest.fn();
+
+const mockBuildStudentKey = jest.fn().mockReturnValue('student:test-student-1');
+const mockResolveEffectiveRepeatCap = jest.fn().mockResolvedValue({
+  capPercent: 10,
+  appliedBy: 'default',
+  sourceId: null,
+});
+const mockGetSeenQuestionSignatures = jest.fn().mockResolvedValue(new Set());
+const mockRecordExposureHistory = jest.fn().mockResolvedValue(0);
 
 // Assembler stub — controls which bank-first scenario the handler sees
 const mockAssembleWorksheet = jest.fn();
@@ -62,6 +74,21 @@ jest.unstable_mockModule('../../src/exporters/index.js', () => ({
 
 jest.unstable_mockModule('../../src/exporters/answerKey.js', () => ({
   exportAnswerKey: mockExportAnswerKey,
+}));
+
+jest.unstable_mockModule('../../src/db/index.js', () => ({
+  getDbAdapter: jest.fn(() => ({
+    getItem: mockDbGetItem,
+    listAll: mockDbListAll,
+    putItem: mockDbPutItem,
+  })),
+}));
+
+jest.unstable_mockModule('../../src/ai/repeatCapPolicy.js', () => ({
+  buildStudentKey: mockBuildStudentKey,
+  resolveEffectiveRepeatCap: mockResolveEffectiveRepeatCap,
+  getSeenQuestionSignatures: mockGetSeenQuestionSignatures,
+  recordExposureHistory: mockRecordExposureHistory,
 }));
 
 jest.unstable_mockModule('fs', () => ({
@@ -222,6 +249,10 @@ beforeEach(() => {
   // Default exporters
   mockExportWorksheet.mockResolvedValue(['/tmp/worksheet.pdf']);
   mockExportAnswerKey.mockResolvedValue(['/tmp/answer-key.pdf']);
+  mockBuildStudentKey.mockReturnValue('student:test-student-1');
+  mockResolveEffectiveRepeatCap.mockResolvedValue({ capPercent: 10, appliedBy: 'default', sourceId: null });
+  mockGetSeenQuestionSignatures.mockResolvedValue(new Set());
+  mockRecordExposureHistory.mockResolvedValue(0);
 
   // Default fs.readFile — returns a non-empty buffer for every path
   mockReadFile.mockResolvedValue(Buffer.from('fake-pdf-content'));

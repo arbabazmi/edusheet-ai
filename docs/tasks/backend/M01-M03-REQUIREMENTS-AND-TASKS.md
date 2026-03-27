@@ -81,6 +81,9 @@
 | REQ-GEN-021 | Question bank adapter must be configurable for local (JSON) vs production (future DB) use | P1 | [PARTIAL] | Given QB_ADAPTER=local env var, When question bank queried, Then local JSON adapter used; future QB_ADAPTER=dynamodb should route to DynamoDB |
 | REQ-GEN-022 | System must support optional student name personalization on worksheet | P1 | [DONE] | Given studentName in request body, When worksheet generated, Then student name appears on the worksheet |
 | REQ-GEN-023 | Worksheet expiry lifecycle (7 days) must be enforced at S3 level | P0 | [DONE] | Given a worksheet uploaded to S3, When 7+ days pass, Then S3 lifecycle rule expires the object |
+| REQ-GEN-024 | System must prevent repeated questions within the same worksheet generation session | P0 | [MISSING] | Given a single generate request, When reusable-question candidates or AI candidates overlap with already selected questions, Then final worksheet assembly excludes duplicates and near-duplicates so the student receives only unique questions in that worksheet |
+| REQ-GEN-025 | System must enforce a default future-session repeat cap of 10% for the same student at the same grade and difficulty | P0 | [MISSING] | Given a future worksheet session for the same student with matching grade and difficulty, When assembly selects candidates, Then no more than floor(questionCount * 0.10) questions may repeat from that student's prior exposure unless override applies |
+| REQ-GEN-026 | Admin must be able to configure repeat-cap override policy by student, teacher, or parent scope with range 0% to 100% | P0 | [MISSING] | Given an admin updates repeat-cap policy for student/teacher/parent scope, When future worksheets are generated for applicable users, Then assembly enforces the configured cap within allowed range 0..100 |
 
 ---
 
@@ -109,6 +112,8 @@
 | DEC-GEN-004 | Question bank storage for production | **DynamoDB** — single-table design, keyed by grade+subject+topic | S3/JSON not viable at scale. Question bank needs filtering, dedup check, reuseCount updates. DynamoDB provides this with low cost. | REQ-GEN-021 |
 | DEC-GEN-005 | Quota enforcement strategy | **DynamoDB counter per teacherId per day** OR **API Gateway Usage Plan per API key** — decision needed (see GAP-003) | App-level DynamoDB counter is more granular but adds complexity. API GW usage plan is simpler but less user-aware. | REQ-GEN-013 |
 | DEC-GEN-006 | solve-data.json storage | **Always written to worksheets-local/{uuid}/solve-data.json (dev)** and **S3 key: worksheets/{date}/{uuid}/solve-data.json (prod)** | Implemented in generation flow and covered by unit/integration tests. | REQ-GEN-010 |
+| DEC-GEN-007 | Session-level duplicate prevention during assembly | **Maintain a request-scoped exclusion set using questionId plus normalized text/answer fingerprints across bank selection and AI gap fill** | Insert-time bank dedupe alone is insufficient. The same worksheet request must filter reused and newly generated candidates against questions already chosen for that worksheet. | REQ-GEN-024 |
+| DEC-GEN-008 | Future-session repeat cap policy resolution | **Use effectiveRepeatCapPercent with default 10%; resolve override precedence by scope (student > parent > teacher > default), and enforce range 0..100** | Supports product requirement for controlled repeat exposure and future payment-plan tiering while keeping deterministic backend behavior. | REQ-GEN-025, REQ-GEN-026 |
 
 ---
 
@@ -306,6 +311,9 @@
 | TASK-GEN-010 | Add LOW_COST_MODEL and PREMIUM_MODEL env vars to generate Lambda in CDK | P2 | todo | — | CDK env vars set; assembler.js reads them; model selection tests verify env override works | devops-agent |
 | TASK-GEN-011 | Add generator integration test to CI pipeline | P0 | done | TASK-GEN-006 | ci.yml "Run all tests" step runs npm test which includes tests/integration/; ANTHROPIC_API_KEY placeholder set in CI env | devops-agent |
 | TASK-GEN-012 | Security review: input sanitization, S3 key injection risks, API key exposure | P0 | todo | TASK-GEN-001 | Security review report completed with critical/high findings either fixed or explicitly tracked | code-reviewer-agent |
+| TASK-GEN-013 | Define and verify request-scoped uniqueness contract for worksheet generation | P0 | todo | TASK-GEN-006 | Contract documents exclusion-set behavior for bank + AI assembly, and QA proves a single worksheet request cannot return duplicate or near-duplicate questions | architect-agent + qa-agent |
+| TASK-GEN-014 | Define backend contract for future-session repeat cap (default 10%) and override precedence/validation | P0 | todo | TASK-GEN-013 | Contract defines matching key for same student+grade+difficulty sessions, cap calculation, scope precedence (student>parent>teacher>default), and validation range 0..100 | architect-agent + ba-agent |
+| TASK-GEN-015 | Add QA coverage plan for repeat-cap enforcement and admin override scopes | P0 | todo | TASK-GEN-014 | QA verifies default 10%, 0%, 100%, and mixed scope precedence cases against future-session generation behavior | qa-agent |
 
 ---
 
@@ -320,6 +328,7 @@
 | GAP-008 | **Generation quota enforcement**: Per-teacher per-day counter in DynamoDB? Or API Gateway Usage Plan with per-key throttle? | TASK-GEN-005 | P2 |
 | GAP-009 | **Second OAuth provider selection**: GitHub or Microsoft? Affects Cognito IdP configuration. Decision: deferred to Phase 2; provider still TBD. | TASK-AUTH-005 | P1 |
 | GAP-010 | **Parent-child link UX**: What is the standard response/UX contract when a parent has no linked child? | TASK-AUTH-007 | P1 |
+| GAP-011 | **Repeat-cap policy storage and resolution strategy**: Where do default and overrides live (global config vs per-entity table), and how are teacher/parent/student conflicts resolved? | TASK-GEN-014, TASK-GEN-015 | P0 |
 
 ---
 
@@ -371,3 +380,6 @@ Based on dependencies and blockers:
 13. TASK-GEN-008: Publish QB_ADAPTER production contract
 14. TASK-GEN-009: Add DynamoDB table + IAM for question bank
 15. TASK-GEN-010: Add LOW_COST_MODEL and PREMIUM_MODEL env vars
+16. TASK-GEN-013: Publish and validate request-scoped uniqueness contract
+17. TASK-GEN-014: Publish repeat-cap policy contract and precedence rules
+18. TASK-GEN-015: Add repeat-cap QA matrix and validation plan
