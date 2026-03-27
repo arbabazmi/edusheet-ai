@@ -27,3 +27,4 @@ npm-debug.log*
 cdk.out/
 infra/cdk/cdk.out/
 infra/cdk/cdk-outputs.json
+cdk.out/cdk.out

@@ -98,10 +98,6 @@
                 <option value="">Select count…</option>
                 <option value="5">5</option>
                 <option value="10">10</option>
-                <option value="15">15</option>
-                <option value="20">20</option>
-                <option value="25">25</option>
-                <option value="30">30</option>
               </select>
               <span class="field-error" id="questionCountError" role="alert" aria-live="polite"></span>
             </div>
@@ -209,6 +205,7 @@
         <div class="error-box__inner">
           <strong class="error-box__title">Something went wrong</strong>
           <p class="error-box__message" id="errorMessage"></p>
+          <p class="error-box__message" id="errorRequestId" hidden></p>
         </div>
         <div class="form-actions">
           <button type="button" id="dismissErrorBtn" class="btn btn--secondary">

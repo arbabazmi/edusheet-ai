@@ -268,6 +268,8 @@ export class LearnfyraStack extends cdk.Stack {
         WORKSHEET_BUCKET_NAME: worksheetBucket.bucketName,
         CLAUDE_MODEL: 'claude-sonnet-4-20250514',
         SSM_PARAM_NAME: `/learnfyra/${appEnv}/anthropic-api-key`,
+        MAX_RETRIES: isProd ? '0' : '1',
+        ANTHROPIC_REQUEST_TIMEOUT_MS: '22000',
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
       tracing: tracingMode,

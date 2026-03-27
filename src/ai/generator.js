@@ -226,12 +226,17 @@ function validateQuestions(data, expectedCount) {
  * @param {string}  options.subject       - Subject name (Math | ELA | Science | Social Studies | Health)
  * @param {string}  options.topic         - Specific topic within subject
  * @param {string}  options.difficulty    - Easy | Medium | Hard | Mixed
- * @param {number}  options.questionCount - Number of questions (5–30)
+ * @param {number}  options.questionCount - Number of questions (5–10)
  * @returns {Promise<Object>} Parsed, coerced, and validated worksheet object
  * @throws {Error} If validation fails after all retry attempts
  */
 export async function generateWorksheet(options) {
   const { grade, subject, questionCount } = options;
+  const isLambdaRuntime = Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+  const anthropicRequestTimeoutMs = parseInt(
+    process.env.ANTHROPIC_REQUEST_TIMEOUT_MS || (isLambdaRuntime ? '22000' : '60000'),
+    10
+  );
 
   // Validate inputs before touching the API
   validateGrade(grade);
@@ -249,12 +254,17 @@ export async function generateWorksheet(options) {
 
     logger.debug(`Claude API call (attempt ${attemptNumber + 1})…`);
 
-    const message = await anthropic.messages.create({
-      model:      CLAUDE_MODEL,
-      max_tokens: MAX_TOKENS,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: userPrompt }],
-    });
+    const message = await anthropic.messages.create(
+      {
+        model:      CLAUDE_MODEL,
+        max_tokens: MAX_TOKENS,
+        system:     systemPrompt,
+        messages:   [{ role: 'user', content: userPrompt }],
+      },
+      {
+        timeout: anthropicRequestTimeoutMs,
+      }
+    );
 
     // Check for truncated response (max_tokens hit mid-JSON)
     if (message.stop_reason === 'max_tokens') {
@@ -301,7 +311,7 @@ export async function generateWorksheet(options) {
       }
     },
     {
-      maxRetries: parseInt(process.env.MAX_RETRIES || '3', 10),
+      maxRetries: parseInt(process.env.MAX_RETRIES || (isLambdaRuntime ? '0' : '3'), 10),
       baseDelayMs: 1000,
       onRetry: (attempt, err) => {
         logger.warn(`Retry ${attempt}: ${err.message}`);

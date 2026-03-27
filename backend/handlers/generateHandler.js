@@ -32,6 +32,8 @@ let _s3, _ssm;
 function getS3()  { if (!_s3)  _s3  = new S3Client({});  return _s3;  }
 function getSsm() { if (!_ssm) _ssm = new SSMClient({}); return _ssm; }
 
+const DIAGNOSTIC_HEADERS = 'x-request-id,x-client-request-id';
+
 // Cache the API key in module scope so it is only fetched once per cold start.
 let _apiKeyLoaded = false;
 
@@ -159,47 +161,138 @@ function mapGenerationErrorCode(err) {
   return 'WG_GENERATION_FAILED';
 }
 
+function getHeader(headers, key) {
+  if (!headers) return null;
+
+  const target = key.toLowerCase();
+  for (const [headerName, headerValue] of Object.entries(headers)) {
+    if (headerName.toLowerCase() === target) {
+      return headerValue;
+    }
+  }
+
+  return null;
+}
+
+function buildHeaders(requestId, clientRequestId) {
+  return {
+    ...corsHeaders,
+    'Access-Control-Expose-Headers': DIAGNOSTIC_HEADERS,
+    'x-request-id': requestId,
+    ...(clientRequestId ? { 'x-client-request-id': clientRequestId } : {}),
+  };
+}
+
+function logEvent(level, message, details) {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    level,
+    message,
+    ...details,
+  };
+
+  console[level](JSON.stringify(entry));
+}
+
+function serializeError(err) {
+  const error = err instanceof Error ? err : new Error(String(err));
+
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+  };
+}
+
+function createErrorResponse({ requestId, clientRequestId, statusCode, error, errorCode, code, stage }) {
+  return {
+    statusCode,
+    headers: buildHeaders(requestId, clientRequestId),
+    body: JSON.stringify({
+      success: false,
+      error,
+      errorCode,
+      ...(code ? { code } : {}),
+      errorStage: stage,
+      requestId,
+      clientRequestId,
+    }),
+  };
+}
+
 export const handler = async (event, context) => {
   context.callbackWaitsForEmptyEventLoop = false;
+  const requestStart = Date.now();
+  const requestId = event?.requestContext?.requestId || context?.awsRequestId || randomUUID();
+  const clientRequestId = getHeader(event?.headers, 'x-client-request-id');
+  let stage = 'request:start';
 
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers: corsHeaders, body: '' };
+    return { statusCode: 200, headers: buildHeaders(requestId, clientRequestId), body: '' };
   }
 
   try {
+    logEvent('info', 'generateHandler request started', {
+      requestId,
+      clientRequestId,
+      stage,
+      httpMethod: event?.httpMethod,
+      path: event?.path || event?.resource,
+    });
+
     // 0. Ensure API key is available (fetches from SSM on first cold start)
+    stage = 'auth:load-api-key';
     await loadApiKey();
+    logEvent('info', 'generateHandler api key ready', {
+      requestId,
+      clientRequestId,
+      stage,
+      elapsedMs: Date.now() - requestStart,
+    });
 
     // 1. Parse and validate request body
     let body;
     try {
+      stage = 'request:parse-body';
       body = JSON.parse(event.body || '{}');
     } catch {
-      return {
+      logEvent('warn', 'generateHandler invalid JSON body', {
+        requestId,
+        clientRequestId,
+        stage,
+      });
+      return createErrorResponse({
+        requestId,
+        clientRequestId,
         statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: 'Invalid JSON in request body.',
-          code: 'WG_INVALID_REQUEST',
-        }),
-      };
+        error: 'Invalid JSON in request body.',
+        errorCode: 'INVALID_JSON',
+        code: 'WG_INVALID_REQUEST',
+        stage,
+      });
     }
 
     let validated;
     try {
+      stage = 'request:validate-body';
       validated = validateGenerateBody(body);
     } catch (err) {
-      return {
+      logEvent('warn', 'generateHandler request validation failed', {
+        requestId,
+        clientRequestId,
+        stage,
+        error: serializeError(err),
+      });
+      return createErrorResponse({
+        requestId,
+        clientRequestId,
         statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          success: false,
-          error: err.message,
-          code: 'WG_INVALID_REQUEST',
-        }),
-      };
+        error: err.message,
+        errorCode: 'VALIDATION_ERROR',
+        code: 'WG_INVALID_REQUEST',
+        stage,
+      });
     }
 
     const {
@@ -225,9 +318,25 @@ export const handler = async (event, context) => {
     const baseKey = `worksheets/${datePath}/${uuid}`;
     const outputDir = '/tmp';
 
-    // 2. Assemble worksheet JSON via M03 bank-first pipeline
-    const assembleWorksheet = await getAssembleWorksheet();
-    const { worksheet, bankStats, provenance } = await assembleWorksheet({
+    logEvent('info', 'generateHandler request validated', {
+      requestId,
+      clientRequestId,
+      stage,
+      grade,
+      subject,
+      topic,
+      difficulty,
+      questionCount,
+      format,
+      includeAnswerKey,
+      generationMode,
+      provenanceLevel,
+    });
+
+        // 2. Assemble worksheet JSON via M03 bank-first pipeline
+    stage = 'worksheet:generate';
+        const assembleWorksheet = await getAssembleWorksheet();
+        const { worksheet, bankStats, provenance } = await assembleWorksheet({
       grade,
       subject,
       topic,
@@ -235,9 +344,18 @@ export const handler = async (event, context) => {
       questionCount,
       generationMode,
       provenanceLevel,
+        });
+    logEvent('info', 'generateHandler worksheet generated', {
+      requestId,
+      clientRequestId,
+      stage,
+      elapsedMs: Date.now() - requestStart,
+      totalPoints: worksheet.totalPoints,
+      questionCount: Array.isArray(worksheet.questions) ? worksheet.questions.length : null,
     });
 
     // 3. Export worksheet file to /tmp
+    stage = 'worksheet:export';
     const exportWorksheet = await getExportWorksheet();
     const worksheetPaths = await exportWorksheet(worksheet, {
       grade, subject, topic, difficulty,
@@ -251,14 +369,31 @@ export const handler = async (event, context) => {
       outputDir,
     });
     const worksheetLocalPath = worksheetPaths[0];
+    logEvent('info', 'generateHandler worksheet exported', {
+      requestId,
+      clientRequestId,
+      stage,
+      elapsedMs: Date.now() - requestStart,
+      worksheetLocalPath,
+    });
 
     // 4. Upload worksheet to S3
+    stage = 'worksheet:upload';
     const worksheetKey = `${baseKey}/worksheet.${ext}`;
     await uploadToS3(worksheetLocalPath, worksheetKey, mimeType(ext));
+    logEvent('info', 'generateHandler worksheet uploaded', {
+      requestId,
+      clientRequestId,
+      stage,
+      elapsedMs: Date.now() - requestStart,
+      worksheetKey,
+      bucket: process.env.WORKSHEET_BUCKET_NAME,
+    });
 
     // 5. Export and upload answer key (if requested)
     let answerKeyKey = null;
     if (includeAnswerKey) {
+      stage = 'answer-key:export';
       const exportAnswerKey = await getExportAnswerKey();
       const answerKeyPaths = await exportAnswerKey(worksheet, {
         grade, subject, topic, difficulty,
@@ -271,14 +406,25 @@ export const handler = async (event, context) => {
         outputDir,
       });
       if (answerKeyPaths.length > 0) {
+        stage = 'answer-key:upload';
         answerKeyKey = `${baseKey}/answer-key.${ext}`;
         await uploadToS3(answerKeyPaths[0], answerKeyKey, mimeType(ext));
+        logEvent('info', 'generateHandler answer key uploaded', {
+          requestId,
+          clientRequestId,
+          stage,
+          elapsedMs: Date.now() - requestStart,
+          answerKeyKey,
+          bucket: process.env.WORKSHEET_BUCKET_NAME,
+        });
       }
     }
 
     // 6. Build metadata and return
+    stage = 'response:success';
     const metadata = {
       id: uuid,
+      solveUrl: `/solve.html?id=${uuid}`,
       generatedAt: now.toISOString(),
       grade,
       subject,
@@ -300,24 +446,33 @@ export const handler = async (event, context) => {
 
     return {
       statusCode: 200,
-      headers: corsHeaders,
+      headers: buildHeaders(requestId, clientRequestId),
       body: JSON.stringify({
         success: true,
         worksheetKey,
         answerKeyKey,
         metadata,
+        requestId,
+        clientRequestId,
       }),
     };
   } catch (err) {
-    console.error('generateHandler error:', err);
-    return {
+    logEvent('error', 'generateHandler request failed', {
+      requestId,
+      clientRequestId,
+      stage,
+      elapsedMs: Date.now() - requestStart,
+      error: serializeError(err),
+    });
+
+    return createErrorResponse({
+      requestId,
+      clientRequestId,
       statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: 'Worksheet generation failed. Please try again.',
-        code: mapGenerationErrorCode(err),
-      }),
-    };
+      error: 'Worksheet generation failed. Please try again.',
+      errorCode: 'GENERATION_FAILED',
+      code: mapGenerationErrorCode(err),
+      stage,
+    });
   }
 };
