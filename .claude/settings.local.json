@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check C:/arbab-github/edusheet-ai/backend/middleware/authMiddleware.js)",
+      "Bash(node --check C:/arbab-github/edusheet-ai/src/auth/tokenUtils.js)",
+      "Bash(node --check C:/arbab-github/edusheet-ai/src/auth/mockAuthAdapter.js)",
+      "Bash(node --check C:/arbab-github/edusheet-ai/backend/handlers/authHandler.js)",
+      "Bash(node:*)",
+      "Bash(npm test:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

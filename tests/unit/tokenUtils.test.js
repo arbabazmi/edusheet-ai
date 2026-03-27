@@ -28,11 +28,15 @@ delete process.env.JWT_SECRET;
 // module evaluation time.
 let signToken;
 let verifyToken;
+let signOAuthState;
+let verifyOAuthState;
 
 beforeAll(async () => {
   const mod = await import('../../src/auth/tokenUtils.js');
   signToken = mod.signToken;
   verifyToken = mod.verifyToken;
+  signOAuthState = mod.signOAuthState;
+  verifyOAuthState = mod.verifyOAuthState;
 });
 
 // ─── signToken ────────────────────────────────────────────────────────────────
@@ -119,6 +123,41 @@ describe('verifyToken()', () => {
 
   it('throws on an empty string', () => {
     expect(() => verifyToken('')).toThrow();
+  });
+
+});
+
+// ─── signOAuthState / verifyOAuthState ────────────────────────────────────────
+
+describe('signOAuthState() / verifyOAuthState()', () => {
+
+  it('round-trips a state payload with nonce and code_verifier', () => {
+    const payload = { nonce: 'abc-123', code_verifier: 'verifier-xyz' };
+    const state = signOAuthState(payload);
+    const decoded = verifyOAuthState(state);
+    expect(decoded.nonce).toBe(payload.nonce);
+    expect(decoded.code_verifier).toBe(payload.code_verifier);
+  });
+
+  it('produces a JWT string (three dot-separated segments)', () => {
+    const state = signOAuthState({ nonce: 'n', code_verifier: 'v' });
+    expect(state.split('.')).toHaveLength(3);
+  });
+
+  it('throws on a tampered state token', () => {
+    const state = signOAuthState({ nonce: 'n', code_verifier: 'v' });
+    const parts = state.split('.');
+    parts[1] = Buffer.from(JSON.stringify({ nonce: 'evil', code_verifier: 'evil' })).toString('base64url');
+    expect(() => verifyOAuthState(parts.join('.'))).toThrow();
+  });
+
+  it('throws on an expired state token', () => {
+    const expired = signToken({ nonce: 'n', code_verifier: 'v' }, '-1s');
+    expect(() => verifyOAuthState(expired)).toThrow();
+  });
+
+  it('throws on an empty string', () => {
+    expect(() => verifyOAuthState('')).toThrow();
   });
 
 });

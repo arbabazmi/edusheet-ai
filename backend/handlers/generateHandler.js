@@ -60,9 +60,24 @@ async function loadApiKey() {
 }
 
 // Lazy import helpers — only loaded on first real invocation
+let _validateToken;
+let _assertRole;
 let _assembleWorksheet;
 let _exportWorksheet;
 let _exportAnswerKey;
+
+/**
+ * Returns validateToken and assertRole from authMiddleware, importing on first call.
+ * @returns {Promise<{ validateToken: Function, assertRole: Function }>}
+ */
+async function getAuthMiddleware() {
+  if (!_validateToken) {
+    const mod = await import('../middleware/authMiddleware.js');
+    _validateToken = mod.validateToken;
+    _assertRole    = mod.assertRole;
+  }
+  return { validateToken: _validateToken, assertRole: _assertRole };
+}
 
 /**
  * Returns the assembleWorksheet function (M03 bank-first pipeline),
@@ -126,6 +141,25 @@ async function uploadToS3(localPath, s3Key, contentType) {
     Key: s3Key,
     Body: body,
     ContentType: contentType,
+  }));
+  return s3Key;
+}
+
+/**
+ * Serialises a JSON object and uploads it directly to S3 (no local temp file).
+ * Used for solve-data.json which is built in memory rather than exported to /tmp.
+ * @param {string} s3Key - Destination S3 key
+ * @param {Object} data  - JSON-serialisable object
+ * @returns {Promise<string>} The S3 key that was written
+ */
+async function uploadJsonToS3(s3Key, data) {
+  const bucket = process.env.WORKSHEET_BUCKET_NAME;
+  if (!bucket) throw new Error('WORKSHEET_BUCKET_NAME environment variable is not set.');
+  await getS3().send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: s3Key,
+    Body: JSON.stringify(data),
+    ContentType: 'application/json',
   }));
   return s3Key;
 }
@@ -196,12 +230,11 @@ function logEvent(level, message, details) {
 
 function serializeError(err) {
   const error = err instanceof Error ? err : new Error(String(err));
-
-  return {
-    name: error.name,
-    message: error.message,
-    stack: error.stack,
-  };
+  const out = { name: error.name, message: error.message };
+  if (process.env.NODE_ENV !== 'production') {
+    out.stack = error.stack;
+  }
+  return out;
 }
 
 function createErrorResponse({ requestId, clientRequestId, statusCode, error, errorCode, code, stage }) {
@@ -224,7 +257,10 @@ export const handler = async (event, context) => {
   context.callbackWaitsForEmptyEventLoop = false;
   const requestStart = Date.now();
   const requestId = event?.requestContext?.requestId || context?.awsRequestId || randomUUID();
-  const clientRequestId = getHeader(event?.headers, 'x-client-request-id');
+  const rawClientRequestId = getHeader(event?.headers, 'x-client-request-id');
+  const clientRequestId = (typeof rawClientRequestId === 'string')
+    ? rawClientRequestId.replace(/[^A-Za-z0-9\-_]/g, '').slice(0, 64) || null
+    : null;
   let stage = 'request:start';
 
   // Handle CORS preflight
@@ -241,7 +277,38 @@ export const handler = async (event, context) => {
       path: event?.path || event?.resource,
     });
 
-    // 0. Ensure API key is available (fetches from SSM on first cold start)
+    // 0a. Auth enforcement — teacher or admin JWT required
+    let decoded;
+    try {
+      stage = 'auth:validate-token';
+      const { validateToken: doValidate, assertRole: doAssertRole } = await getAuthMiddleware();
+      decoded = await doValidate(event);
+      doAssertRole(decoded, ['teacher', 'admin']);
+    } catch (err) {
+      return createErrorResponse({
+        requestId,
+        clientRequestId,
+        statusCode: err.statusCode || 401,
+        error: err.message,
+        errorCode: err.statusCode === 403 ? 'FORBIDDEN' : 'UNAUTHORIZED',
+        code: err.statusCode === 403 ? 'WG_FORBIDDEN' : 'WG_UNAUTHORIZED',
+        stage,
+      });
+    }
+    const teacherId = decoded.sub;
+    if (typeof teacherId !== 'string' || !/^[\w\-]{1,128}$/.test(teacherId)) {
+      return createErrorResponse({
+        requestId,
+        clientRequestId,
+        statusCode: 401,
+        error: 'Invalid token subject.',
+        errorCode: 'UNAUTHORIZED',
+        code: 'WG_UNAUTHORIZED',
+        stage,
+      });
+    }
+
+    // 0b. Ensure API key is available (fetches from SSM on first cold start)
     stage = 'auth:load-api-key';
     await loadApiKey();
     logEvent('info', 'generateHandler api key ready', {
@@ -374,7 +441,7 @@ export const handler = async (event, context) => {
       clientRequestId,
       stage,
       elapsedMs: Date.now() - requestStart,
-      worksheetLocalPath,
+      worksheetFilename: worksheetLocalPath.split(/[\\/]/).pop(),
     });
 
     // 4. Upload worksheet to S3
@@ -390,7 +457,25 @@ export const handler = async (event, context) => {
       bucket: process.env.WORKSHEET_BUCKET_NAME,
     });
 
-    // 5. Export and upload answer key (if requested)
+    // 5. Upload solve-data.json to S3 — full worksheet with answers for online scoring
+    stage = 'solve-data:upload';
+    const solveData = {
+      worksheetId: uuid,
+      generatedAt: now.toISOString(),
+      teacherId,
+      ...worksheet,
+    };
+    const solveDataKey = `${baseKey}/solve-data.json`;
+    await uploadJsonToS3(solveDataKey, solveData);
+    logEvent('info', 'generateHandler solve-data uploaded', {
+      requestId,
+      clientRequestId,
+      stage,
+      elapsedMs: Date.now() - requestStart,
+      solveDataKey,
+    });
+
+    // 7. Export and upload answer key (if requested)
     let answerKeyKey = null;
     if (includeAnswerKey) {
       stage = 'answer-key:export';
@@ -420,7 +505,7 @@ export const handler = async (event, context) => {
       }
     }
 
-    // 6. Build metadata and return
+    // 8. Build metadata and return
     stage = 'response:success';
     const metadata = {
       id: uuid,

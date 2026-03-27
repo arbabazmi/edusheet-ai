@@ -64,12 +64,16 @@ export function validateGenerateBody(body) {
     throw new Error(`subject must be one of: ${VALID_SUBJECTS.join(', ')}.`);
   }
 
-  // topic: required, non-empty string, max 200 characters
+  // topic: required, non-empty string, max 200 characters, safe characters only
   if (typeof body.topic !== 'string' || !body.topic.trim()) {
     throw new Error('topic must be a non-empty string.');
   }
   if (body.topic.trim().length > 200) {
     throw new Error('topic must be 200 characters or fewer.');
+  }
+  // Block characters that enable prompt injection: double-quotes, newlines, null bytes
+  if (/["\x00\n\r]/.test(body.topic)) {
+    throw new Error('topic contains invalid characters.');
   }
 
   // difficulty: required, one of valid list
