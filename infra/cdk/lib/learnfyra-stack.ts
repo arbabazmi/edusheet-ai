@@ -406,6 +406,24 @@ export class LearnfyraStack extends cdk.Stack {
       description: `learnfyra-${appEnv}-lambda-auth — auth route handler`,
     });
 
+    // ── Lambda: API Gateway token authorizer ─────────────────────────────────
+    const apiAuthorizerFn = new NodejsFunction(this, 'ApiAuthorizerFunction', {
+      functionName: `learnfyra-${appEnv}-lambda-api-authorizer`,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      architecture: lambda.Architecture.ARM_64,
+      entry: resolveHandlerEntry('apiAuthorizerHandler.js'),
+      handler: 'handler',
+      memorySize: 128,
+      timeout: cdk.Duration.seconds(5),
+      bundling,
+      environment: {
+        NODE_ENV: appEnv,
+      },
+      logRetention: logs.RetentionDays.ONE_MONTH,
+      tracing: tracingMode,
+      description: `learnfyra-${appEnv}-lambda-api-authorizer — API Gateway JWT authorizer`,
+    });
+
     // ── Lambda: Solve handler ──────────────────────────────────────────────────
     const solveFn = new NodejsFunction(this, 'SolveFunction', {
       functionName: `learnfyra-${appEnv}-lambda-solve`,
@@ -576,6 +594,15 @@ export class LearnfyraStack extends cdk.Stack {
       fn.addEnvironment('AUTH_MODE', 'cognito');
     });
 
+    apiAuthorizerFn.addEnvironment('JWT_SECRET', jwtSecretValue);
+    apiAuthorizerFn.addEnvironment('AUTH_MODE', 'cognito');
+
+    const tokenAuthorizer = new apigateway.TokenAuthorizer(this, 'ApiTokenAuthorizer', {
+      handler: apiAuthorizerFn,
+      identitySource: apigateway.IdentitySource.header('Authorization'),
+      resultsCacheTtl: cdk.Duration.minutes(5),
+    });
+
     // OAUTH_CALLBACK_BASE_URL: used by OAuth adapters to build the redirect URI.
     // dev:  CloudFront domain (or '*' when custom domains disabled for local testing)
     // staging/prod: CloudFront domain for the environment
@@ -599,7 +626,11 @@ export class LearnfyraStack extends cdk.Stack {
     generateResource.addMethod(
       'POST',
       new apigateway.LambdaIntegration(generateFn, { proxy: true }),
-      { apiKeyRequired: false }
+      {
+        apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
+      }
     );
 
     const downloadResource = apiResource.addResource('download');
@@ -649,6 +680,8 @@ export class LearnfyraStack extends cdk.Stack {
       .addResource('submit')
       .addMethod('POST', new apigateway.LambdaIntegration(submitFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
 
     apiResource
@@ -656,6 +689,8 @@ export class LearnfyraStack extends cdk.Stack {
       .addResource('{worksheetId}')
       .addMethod('GET', new apigateway.LambdaIntegration(solveFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
 
     const progressResource = apiResource.addResource('progress');
@@ -663,11 +698,15 @@ export class LearnfyraStack extends cdk.Stack {
       .addResource('save')
       .addMethod('POST', new apigateway.LambdaIntegration(progressFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
     progressResource
       .addResource('history')
       .addMethod('GET', new apigateway.LambdaIntegration(progressFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
 
     const classResource = apiResource.addResource('class');
@@ -675,12 +714,16 @@ export class LearnfyraStack extends cdk.Stack {
       .addResource('create')
       .addMethod('POST', new apigateway.LambdaIntegration(classFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
     classResource
       .addResource('{id}')
       .addResource('students')
       .addMethod('GET', new apigateway.LambdaIntegration(classFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
 
     apiResource
@@ -689,6 +732,8 @@ export class LearnfyraStack extends cdk.Stack {
       .addResource('{id}')
       .addMethod('GET', new apigateway.LambdaIntegration(analyticsFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
 
     const rewardsResource = apiResource.addResource('rewards');
@@ -697,12 +742,16 @@ export class LearnfyraStack extends cdk.Stack {
       .addResource('{id}')
       .addMethod('GET', new apigateway.LambdaIntegration(rewardsFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
     rewardsResource
       .addResource('class')
       .addResource('{id}')
       .addMethod('GET', new apigateway.LambdaIntegration(rewardsFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
 
     const studentResource = apiResource.addResource('student');
@@ -710,11 +759,15 @@ export class LearnfyraStack extends cdk.Stack {
       .addResource('profile')
       .addMethod('GET', new apigateway.LambdaIntegration(studentFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
     studentResource
       .addResource('join-class')
       .addMethod('POST', new apigateway.LambdaIntegration(studentFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
 
     const qbResource = apiResource.addResource('qb');
@@ -722,21 +775,29 @@ export class LearnfyraStack extends cdk.Stack {
     qbQuestionsResource
       .addMethod('GET', new apigateway.LambdaIntegration(adminFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
     qbQuestionsResource
       .addMethod('POST', new apigateway.LambdaIntegration(adminFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
 
     const qbQuestionById = qbQuestionsResource.addResource('{id}');
     qbQuestionById
       .addMethod('GET', new apigateway.LambdaIntegration(adminFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
     qbQuestionById
       .addResource('reuse')
       .addMethod('POST', new apigateway.LambdaIntegration(adminFn, { proxy: true }), {
         apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+        authorizer: tokenAuthorizer,
       });
 
     const monitoredFunctions = [

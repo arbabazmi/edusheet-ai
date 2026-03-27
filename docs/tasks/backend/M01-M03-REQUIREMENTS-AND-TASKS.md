@@ -32,20 +32,20 @@
 | REQ-AUTH-005 | System must support logout (client-side token invalidation for MVP) | P0 | [DONE] | Given any valid session, When POST /api/auth/logout, Then 200 + { message: 'Logged out.' } |
 | REQ-AUTH-006 | System must issue JWT HS256 tokens with role claims on register and login | P0 | [DONE] | Given a successful register or login, When token is decoded, Then payload contains { sub (userId), email, role } |
 | REQ-AUTH-007 | JWT tokens must expire after 7 days | P0 | [DONE] | Given a token issued at T, When verified at T+8 days, Then token is rejected with expiry error |
-| REQ-AUTH-008 | JWT_SECRET must be injected from SSM in all non-development environments | P0 | [PARTIAL] | Given CDK deploys Lambda, When JWT_SECRET SSM param read, Then value is set — but AUTH_MODE=mock means real JWT signing path is bypassed in current CDK |
-| REQ-AUTH-009 | System must support Google OAuth initiation — return real authorization URL | P0 | [MISSING] | Given POST /api/auth/oauth/google, When Google OAuth app credentials are set, Then real Google consent URL returned |
-| REQ-AUTH-010 | System must handle Google OAuth callback — exchange code for user, issue JWT | P0 | [MISSING] | Given GET /api/auth/callback/google with valid code, When exchange succeeds, Then user created/found and JWT issued with role claims |
-| REQ-AUTH-011 | System must support a second OAuth provider (GitHub or Microsoft) | P1 | [MISSING] | Given POST /api/auth/oauth/github, When real GitHub OAuth configured, Then GitHub consent URL returned and callback handled |
+| REQ-AUTH-008 | JWT_SECRET must be injected securely in all non-development environments | P0 | [DONE] | Given CDK deploys Lambda, When JWT secret is resolved from Secrets Manager, Then JWT signing/verifying works without hardcoded secrets |
+| REQ-AUTH-009 | System must support Google OAuth initiation — return real authorization URL | P0 | [DONE] | Given POST /api/auth/oauth/google in AUTH_MODE=cognito, When Cognito config is present, Then Cognito Hosted UI authorization URL with PKCE is returned |
+| REQ-AUTH-010 | System must handle Google OAuth callback — exchange code for user, issue JWT | P0 | [DONE] | Given GET /api/auth/callback/google with valid code and state, When exchange succeeds, Then callback returns user identity + issued JWT |
+| REQ-AUTH-011 | System must support a second OAuth provider (GitHub or Microsoft) | P1 | [MISSING] | Deferred to Phase 2. Start after TASK-AUTH-015 (API Gateway authorizer). Provider remains undecided. |
 | REQ-AUTH-012 | Role claims must be limited to: student, teacher, parent | P0 | [DONE] | Given a register attempt with role='admin', When validated, Then 400 error — role must be one of student/teacher/parent |
 | REQ-AUTH-013 | System must support an admin/super-admin role for platform operations | P0 | [MISSING] | Given an admin user, When they call admin-only endpoints, Then access is granted; non-admins receive 403 |
 | REQ-AUTH-014 | All protected routes must enforce Bearer JWT validation via authMiddleware | P0 | [PARTIAL] | Given a request without Authorization header, When hitting a protected route, Then 401 returned — middleware exists but not universally applied |
 | REQ-AUTH-015 | Role-based access control must be enforced via assertRole per route | P0 | [PARTIAL] | Given a student calls a teacher-only route, When assertRole(['teacher']) runs, Then 403 returned |
-| REQ-AUTH-016 | System must implement a token refresh endpoint | P1 | [MISSING] | Given POST /api/auth/refresh with valid refresh token, When not expired, Then new access token returned without re-login |
-| REQ-AUTH-017 | System must enforce rate limiting on auth endpoints (register, login, oauth) | P0 | [MISSING] | Given more than N requests per minute from same IP, When rate limit hit, Then 429 returned |
-| REQ-AUTH-018 | Parent users must have child-link state tracked and enforced | P1 | [MISSING] | Given a parent with no linked child, When parent accesses student data, Then guided link flow shown, not data |
+| REQ-AUTH-016 | System must implement a token refresh endpoint | P1 | [DONE] | Given POST /api/auth/refresh with valid refresh token, When not expired, Then new access token is returned; invalid/expired refresh token returns 401 |
+| REQ-AUTH-017 | System must enforce rate limiting on auth endpoints (register, login, oauth) | P0 | [PARTIAL] | Given auth API traffic exceeds route policy, Then register/login are throttled by API Gateway; oauth-specific throttling remains to be completed |
+| REQ-AUTH-018 | Parent users must have child-link state tracked and enforced | P1 | [PARTIAL] | Given a parent with no active link, When parent requests child progress, Then access is denied (403); enforcement should be standardized across all parent-scoped routes |
 | REQ-AUTH-019 | System must handle multi-provider account linking (same email, Google + GitHub) [INFERRED] | P2 | [MISSING] | Given email X registered via Google, When same email X arrives via GitHub OAuth, Then accounts linked, not duplicated |
-| REQ-AUTH-020 | OAuth redirect URIs must be environment-aware (localhost for dev, CloudFront domain for prod) [INFERRED] | P0 | [MISSING] | Given CDK deploy to staging/prod, When OAuth callback fires, Then redirect URI points to correct environment domain, not localhost |
-| REQ-AUTH-021 | System must implement a production-grade auth adapter (Cognito) for AWS deployment | P0 | [MISSING] | Given AUTH_MODE=cognito and Cognito User Pool configured, When login occurs, Then Cognito handles credential verification and token issuance |
+| REQ-AUTH-020 | OAuth redirect URIs must be environment-aware (localhost for dev, CloudFront domain for prod) [INFERRED] | P0 | [DONE] | Given CDK deploy per environment, When OAuth callback is configured, Then callback URLs are set per env-specific base domain |
+| REQ-AUTH-021 | System must implement a production-grade auth adapter (Cognito) for AWS deployment | P0 | [DONE] | Given AUTH_MODE=cognito and Cognito config, When OAuth flow is used, Then cognitoAdapter performs PKCE/state flow and returns JWT-backed session response |
 | REQ-AUTH-022 | All auth error responses must use consistent schema: { error: string } | P0 | [DONE] | Given any auth failure, When error returned, Then body is { error: "message" } with appropriate HTTP status |
 | REQ-AUTH-023 | CORS headers must be present on all auth responses including error paths | P0 | [DONE] | Given any auth endpoint response, Then Access-Control-Allow-Origin header is present |
 | REQ-AUTH-024 | OPTIONS preflight must be handled on all auth routes | P0 | [DONE] | Given OPTIONS request to any auth route, Then 200 with CORS headers and empty body |
@@ -67,16 +67,16 @@
 | REQ-GEN-007 | Question reuse must be tracked (reuseCount incremented) for banked questions | P0 | [DONE] | Given a banked question is used in a worksheet, When recordQuestionReuse called, Then reuseCount incremented |
 | REQ-GEN-008 | All questions must be renumbered 1..N after bank+AI merge | P0 | [DONE] | Given 6 banked + 4 AI questions, When merged, Then questions numbered 1–10 sequentially |
 | REQ-GEN-009 | Worksheet JSON must include provenance metadata (banked vs AI-generated per question) | P1 | [PARTIAL] | Given a generated worksheet, When JSON inspected, Then each question has provenance field indicating source |
-| REQ-GEN-010 | solve-data.json must be written alongside the worksheet on every generation | P0 | [PARTIAL] | Given POST /api/generate succeeds, When worksheets-local/{uuid}/ inspected, Then solve-data.json contains full worksheet with answers |
-| REQ-GEN-011 | POST /api/generate must require a valid JWT (auth enforcement) | P0 | [MISSING] | Given a request without Authorization header, When POST /api/generate called, Then 401 returned |
-| REQ-GEN-012 | Only teacher role may call POST /api/generate [INFERRED] | P1 | [MISSING] | Given a student JWT, When POST /api/generate called, Then 403 returned |
+| REQ-GEN-010 | solve-data.json must be written alongside the worksheet on every generation | P0 | [DONE] | Given POST /api/generate succeeds, When storage is inspected, Then solve-data.json is written with worksheetId, teacherId, and full question/answer payload |
+| REQ-GEN-011 | POST /api/generate must require a valid JWT (auth enforcement) | P0 | [DONE] | Given a request without Authorization header, When POST /api/generate is called, Then 401 is returned |
+| REQ-GEN-012 | Only teacher/admin roles may call POST /api/generate [INFERRED] | P1 | [DONE] | Given a student JWT, When POST /api/generate is called, Then 403 is returned; teacher/admin are allowed |
 | REQ-GEN-013 | System must enforce per-user/role generation quota [INFERRED] | P1 | [MISSING] | Given a teacher has generated 50 worksheets today, When they generate another, Then quota check runs and throttles if exceeded |
-| REQ-GEN-014 | Generated worksheet must be associated with the requesting teacher's userId | P1 | [MISSING] | Given a teacher with userId X generates a worksheet, When metadata.json written, Then teacherId: X is present |
+| REQ-GEN-014 | Generated worksheet must be associated with the requesting teacher's userId | P1 | [DONE] | Given a teacher with userId X generates a worksheet, When metadata/solve-data are written, Then teacherId: X is present |
 | REQ-GEN-015 | System must return a structured error with errorCode on all failure paths | P0 | [DONE] | Given any generation failure, When error returned, Then body contains { success: false, error, errorCode, errorStage, requestId } |
 | REQ-GEN-016 | CORS headers must be present on all generate responses including error paths | P0 | [DONE] | Given any generate response, Then Access-Control-Allow-Origin header is present |
 | REQ-GEN-017 | Worksheet and answer-key files must be uploaded to S3 after generation | P0 | [DONE] | Given successful generation, When S3 inspected, Then worksheets/{date}/{uuid}/worksheet.{ext} and answer-key.{ext} present |
 | REQ-GEN-018 | API key (ANTHROPIC_API_KEY) must be loaded from SSM Parameter Store on Lambda cold start | P0 | [DONE] | Given Lambda cold start, When SSM_PARAM_NAME env var set, Then API key fetched from SSM and cached in module scope |
-| REQ-GEN-019 | System must have an integration test covering the full bank-first generation flow | P0 | [MISSING] | Given integration test suite, When bank-first flow run end-to-end, Then worksheet generated, bank queried, AI gap-filled, stored, result returned |
+| REQ-GEN-019 | System must have an integration test covering the full bank-first generation flow | P0 | [DONE] | Given integration test suite, When bank-first flow runs end-to-end, Then worksheet generation, auth paths, S3 writes, and response contract are validated |
 | REQ-GEN-020 | Input validation must reject invalid grade, subject, topic, questionCount, format values | P0 | [DONE] | Given invalid request body, When validateGenerateBody runs, Then 400 returned with specific field error |
 | REQ-GEN-021 | Question bank adapter must be configurable for local (JSON) vs production (future DB) use | P1 | [PARTIAL] | Given QB_ADAPTER=local env var, When question bank queried, Then local JSON adapter used; future QB_ADAPTER=dynamodb should route to DynamoDB |
 | REQ-GEN-022 | System must support optional student name personalization on worksheet | P1 | [DONE] | Given studentName in request body, When worksheet generated, Then student name appears on the worksheet |
@@ -104,11 +104,11 @@
 | DEC-GEN-NNN | Decision | Chosen Approach | Rationale | Blocking REQs |
 |---|---|---|---|---|
 | DEC-GEN-001 | Auth enforcement on POST /api/generate | **HTTP header: Authorization Bearer JWT** — validated via authMiddleware.validateToken() before generation | Consistent with all other protected routes. Minimal change to existing handler. | REQ-GEN-011 |
-| DEC-GEN-002 | Role restriction on generate | **teacher role only** — assertRole(['teacher']) after validateToken | Students should not generate custom worksheets (they solve assigned ones). Admin may also generate. | REQ-GEN-012 |
+| DEC-GEN-002 | Role restriction on generate | **teacher/admin roles** — assertRole(['teacher','admin']) after validateToken | Students should not generate custom worksheets; admin retains operational override. | REQ-GEN-012 |
 | DEC-GEN-003 | Teacher-worksheet association | **teacherId added to metadata.json and solve-data.json** — extracted from JWT payload after validateToken | Does not change client-facing response shape. Teachership tracked in metadata only. | REQ-GEN-014 |
 | DEC-GEN-004 | Question bank storage for production | **DynamoDB** — single-table design, keyed by grade+subject+topic | S3/JSON not viable at scale. Question bank needs filtering, dedup check, reuseCount updates. DynamoDB provides this with low cost. | REQ-GEN-021 |
 | DEC-GEN-005 | Quota enforcement strategy | **DynamoDB counter per teacherId per day** OR **API Gateway Usage Plan per API key** — decision needed (see GAP-003) | App-level DynamoDB counter is more granular but adds complexity. API GW usage plan is simpler but less user-aware. | REQ-GEN-013 |
-| DEC-GEN-006 | solve-data.json storage | **Always written to worksheets-local/{uuid}/solve-data.json (dev)** and **S3 key: worksheets/{date}/{uuid}/solve-data.json (prod)** — must verify assembler writes it | Confirmed in assembler documentation but not verified end-to-end. Needs audit task. | REQ-GEN-010 |
+| DEC-GEN-006 | solve-data.json storage | **Always written to worksheets-local/{uuid}/solve-data.json (dev)** and **S3 key: worksheets/{date}/{uuid}/solve-data.json (prod)** | Implemented in generation flow and covered by unit/integration tests. | REQ-GEN-010 |
 
 ---
 
@@ -118,17 +118,17 @@
 
 | File | Exists | Status | What It Does | Missing / Incomplete | Rewrite Needed? |
 |---|---|---|---|---|---|
-| backend/handlers/authHandler.js | YES | PARTIAL | Routes: register, login, logout, oauth/:provider, callback/:provider. Full handler logic. | No token refresh route. No admin role support. No rate limiting. OAuth routes call stub adapter only. | No — extend |
-| src/auth/index.js | YES | PARTIAL | Auth adapter factory. Returns mockAuthAdapter. Throws on cognito. | Cognito adapter branch throws error — not implemented. | No — extend |
+| backend/handlers/authHandler.js | YES | PARTIAL | Routes: register, login, logout, refresh, oauth/:provider, callback/:provider. OAuth calls active adapter (stub in mock mode, Cognito in cognito mode). | Admin role not accepted in register VALID_ROLES. | No — extend |
+| src/auth/index.js | YES | DONE | Auth adapter factory with mode-based selection for auth and OAuth adapters. | GitHub real OAuth provider not implemented in cognitoAdapter. | No — extend |
 | src/auth/mockAuthAdapter.js | YES | DONE (local) | bcrypt user create/verify/token, local JSON DB, authType field | Production-only: no Cognito path | No — keep, add cognito adapter separately |
 | src/auth/oauthStubAdapter.js | YES | PARTIAL (stub only) | Returns fake authorization URLs and mock users. Google + GitHub stub. CSRF state generated but not validated. | No real OAuth exchange. No real token exchange. No real user creation from OAuth profile. | No — keep for local dev, add real adapter |
-| src/auth/tokenUtils.js | YES | DONE | JWT HS256 sign/verify, JWT_SECRET from env, 7-day default expiry | No refresh token logic | No — extend for refresh token |
+| src/auth/tokenUtils.js | YES | DONE | JWT HS256 sign/verify, refresh token sign/verify, OAuth state token sign/verify | — | No |
 | backend/middleware/authMiddleware.js | YES | DONE | validateToken (Bearer JWT) + assertRole (allowlist). Case-insensitive header read. | Not applied universally — each handler must call explicitly | No — keep as-is |
 | tests/unit/authHandler.test.js | YES | PARTIAL | Exists — covers register, login, logout, oauth routes | Scope of coverage unknown without reading; needs audit | — |
 | tests/unit/authMiddleware.test.js | YES | DONE | Exists | — | — |
 | tests/unit/oauthStubAdapter.test.js | YES | DONE | Exists | — | — |
 | tests/unit/tokenUtils.test.js | YES | DONE | Exists | — | — |
-| tests/integration/auth*.test.js | NO | MISSING | No auth integration test exists | Full round-trip register → login → access protected route not tested | — |
+| tests/integration/auth*.test.js | YES | DONE | Auth integration flow test exists (register → login → validate token → logout) | Additional Cognito-mode integration test coverage can be expanded | — |
 
 ## 3.2 M01 Auth — Feature Coverage Matrix
 
@@ -137,19 +137,19 @@
 | Local register | ✅ | | | bcrypt, dedup check, role validation |
 | Local login | ✅ | | | Password verify, JWT issue |
 | Logout | ✅ | | | Client-side only (stateless) |
-| Google OAuth (real) | | | ❌ | oauthStubAdapter only — no real PKCE/token exchange |
+| Google OAuth (real) | ✅ | | | Implemented via Cognito Hosted UI + PKCE/state in cognitoAdapter |
 | GitHub OAuth (real) | | | ❌ | oauthStubAdapter stub — no real flow |
 | JWT issuance with role claims | ✅ | | | sub, email, role in payload |
 | Token expiry (7 days) | ✅ | | | signToken expiresIn='7d' |
-| Token refresh | | | ❌ | No /api/auth/refresh route, no refresh token concept |
+| Token refresh | ✅ | | | /api/auth/refresh implemented with refresh token verify + access token re-issue |
 | Role claims: teacher/student/parent | ✅ | | | VALID_ROLES enforced |
 | Admin role | | | ❌ | Not in VALID_ROLES |
 | Protected routes via middleware | | ✅ | | Middleware exists but must be called per-handler, not auto |
-| Parent-child link enforcement | | | ❌ | parentLinks.json exists but no auth layer enforcement |
+| Parent-child link enforcement | | ✅ | | Enforced in parent progress path; helper middleware added for broader reuse |
 | Rate limiting | | | ❌ | Only global API GW throttle (2/s dev, 10/s prod) |
 | Multi-provider account linking | | | ❌ | Not designed |
-| Cognito adapter (prod) | | | ❌ | Throws "not yet implemented" |
-| Auth integration test | | | ❌ | No integration test file for auth |
+| Cognito adapter (prod) | ✅ | | | src/auth/cognitoAdapter.js implemented |
+| Auth integration test | ✅ | | | tests/integration/auth.test.js present |
 | Email normalization | ✅ | | | toLowerCase().trim() on register and login |
 | CORS on all responses | ✅ | | | corsHeaders added to all responses |
 
@@ -157,7 +157,7 @@
 
 | File | Exists | Status | What It Does | Missing / Incomplete | Rewrite Needed? |
 |---|---|---|---|---|---|
-| backend/handlers/generateHandler.js | YES | PARTIAL | Full handler: S3 upload, SSM API key fetch, lazy imports, error codes, CORS, request logging | No auth enforcement (unauthenticated). No teacherId extraction. No quota check. | No — extend |
+| backend/handlers/generateHandler.js | YES | PARTIAL | Full handler: auth enforcement, S3 upload, solve-data upload, SSM API key fetch, lazy imports, error codes, CORS, request logging | Quota enforcement not implemented yet. | No — extend |
 | src/ai/assembler.js | YES | DONE | Bank-first pipeline: bank query → selection → AI gap fill → validate → store → reuse track → merge and renumber | solve-data.json write — documented but needs end-to-end verification | No — verify solve-data write |
 | src/ai/generator.js | YES | DONE | Core generation logic, validateQuestion, extractJSON, coerceTypes | — | No |
 | src/ai/client.js | YES | DONE | Anthropic API client, model constants | — | No |
@@ -170,7 +170,7 @@
 | tests/unit/generateHandler.test.js | YES | DONE | Exists | — | — |
 | tests/unit/generator.test.js | YES | DONE | Exists | — | — |
 | tests/unit/modelRouter.test.js | YES | DONE | Exists | — | — |
-| tests/integration/generate*.test.js | NO | MISSING | No generator integration test for bank-first flow | Full flow: POST generate → bank → AI → S3 → response not tested end-to-end | — |
+| tests/integration/generate*.test.js | YES | DONE | Generator integration test covers bank-first flow, auth paths, solve-data upload, and response contract | Extend further if quota and DynamoDB adapter are added | — |
 
 ## 3.4 M03 Generator — Feature Coverage Matrix
 
@@ -181,17 +181,17 @@
 | AI question generation (gap fill) | ✅ | | | withRetry, model selection |
 | Question validation before bank store | ✅ | | | validateQuestion per question |
 | Question reuse tracking | ✅ | | | recordQuestionReuse called |
-| solve-data.json storage | | ✅ | | Documented in assembler — needs end-to-end verification |
+| solve-data.json storage | ✅ | | | Uploaded in generateHandler and validated in tests |
 | Provenance metadata | | ✅ | | Partial — source field on some questions |
-| Auth enforcement on /api/generate | | | ❌ | No validateToken call in generateHandler |
-| Per-role access restriction | | | ❌ | No assertRole in generateHandler |
+| Auth enforcement on /api/generate | ✅ | | | validateToken enforced in handler |
+| Per-role access restriction | ✅ | | | assertRole(['teacher','admin']) enforced |
 | Per-user/role quota | | | ❌ | Not implemented |
-| Teacher-worksheet association | | | ❌ | No teacherId in metadata |
+| Teacher-worksheet association | ✅ | | | teacherId included in metadata and solve-data |
 | S3 upload (worksheet + answer key) | ✅ | | | uploadToS3 function present |
 | SSM API key loading | ✅ | | | loadApiKey() with module-scope cache |
 | Error response contract | ✅ | | | { success, error, errorCode, errorStage, requestId } |
 | Input validation | ✅ | | | validateGenerateBody from middleware/validator.js |
-| Generator integration test | | | ❌ | No integration test for full bank-first flow |
+| Generator integration test | ✅ | | | tests/integration/generateFlow.test.js present |
 | Question bank adapter config | | ✅ | | QB_ADAPTER=local works; QB_ADAPTER=dynamodb not implemented |
 
 ---
@@ -203,15 +203,15 @@
 | Function Name | Handler File | Memory | Timeout | Key Env Vars | Auth Routes Wired | Notes |
 |---|---|---|---|---|---|---|
 | learnfyra-{env}-lambda-generate | generateHandler.js | 512MB(dev)/1024MB(prod) | 60s | WORKSHEET_BUCKET_NAME, CLAUDE_MODEL, SSM_PARAM_NAME, MAX_RETRIES, QB_ADAPTER=local | POST /api/generate | X86_64 (Chromium/PDF), SSM key wired, S3 grantPut+grantRead |
-| learnfyra-{env}-lambda-auth | authHandler.js | 256MB | 15s | AUTH_MODE=mock, APP_RUNTIME=local, JWT_SECRET (from SSM) | POST /api/auth/register, login, logout, oauth/{provider}, GET callback/{provider} | **AUTH_MODE=mock hardcoded — real auth bypassed in AWS** |
+| learnfyra-{env}-lambda-auth | authHandler.js | 256MB | 15s | AUTH_MODE=cognito, JWT_SECRET (from Secrets Manager), OAUTH_CALLBACK_BASE_URL, COGNITO_USER_POOL_ID, COGNITO_APP_CLIENT_ID, COGNITO_DOMAIN | POST /api/auth/register, login, logout, refresh, oauth/{provider}, GET callback/{provider} | Cognito-enabled route wiring present |
 | learnfyra-{env}-lambda-download | downloadHandler.js | 256MB | 30s | WORKSHEET_BUCKET_NAME | GET /api/download | S3 grantRead |
 | learnfyra-{env}-lambda-solve | solveHandler.js | 128MB | 10s | WORKSHEET_BUCKET_NAME | GET /api/solve/{worksheetId} | S3 grantRead |
 | learnfyra-{env}-lambda-submit | submitHandler.js | 256MB | 15s | WORKSHEET_BUCKET_NAME | POST /api/submit | S3 grantRead |
-| learnfyra-{env}-lambda-progress | progressHandler.js | 256MB | 15s | AUTH_MODE=mock | GET/POST /api/progress/* | No S3 |
-| learnfyra-{env}-lambda-analytics | analyticsHandler.js | 256MB | 15s | AUTH_MODE=mock | GET /api/analytics/class/{id} | No S3 |
-| learnfyra-{env}-lambda-class | classHandler.js | 128MB | 10s | AUTH_MODE=mock | GET/POST /api/class/* | No S3 |
-| learnfyra-{env}-lambda-rewards | rewardsHandler.js | 128MB | 10s | AUTH_MODE=mock | GET /api/rewards/* | No S3 |
-| learnfyra-{env}-lambda-student | studentHandler.js | 128MB | 10s | AUTH_MODE=mock | GET/POST /api/student/* | No S3 |
+| learnfyra-{env}-lambda-progress | progressHandler.js | 256MB | 15s | AUTH_MODE=cognito | GET/POST /api/progress/* | No S3 |
+| learnfyra-{env}-lambda-analytics | analyticsHandler.js | 256MB | 15s | AUTH_MODE=cognito | GET /api/analytics/class/{id} | No S3 |
+| learnfyra-{env}-lambda-class | classHandler.js | 128MB | 10s | AUTH_MODE=cognito | GET/POST /api/class/* | No S3 |
+| learnfyra-{env}-lambda-rewards | rewardsHandler.js | 128MB | 10s | AUTH_MODE=cognito | GET /api/rewards/* | No S3 |
+| learnfyra-{env}-lambda-student | studentHandler.js | 128MB | 10s | AUTH_MODE=cognito | GET/POST /api/student/* | No S3 |
 | learnfyra-{env}-lambda-admin | questionBankHandler.js | 256MB | 15s | QB_ADAPTER=local | GET/POST /api/qb/questions/* | No S3 |
 
 ## 4.2 M01 Auth — IaC Gap Analysis
@@ -219,15 +219,15 @@
 | Component | Exists in CDK | Missing | Notes |
 |---|---|---|---|
 | Auth Lambda function | ✅ YES | — | learnfyra-{env}-lambda-auth |
-| All 5 auth API routes wired | ✅ YES | — | register, login, logout, oauth/{provider}, callback/{provider} |
-| JWT_SECRET from SSM | ✅ YES (SSM read) | — | /learnfyra/{env}/jwt-secret — but AUTH_MODE=mock skips real usage |
-| Cognito User Pool | ❌ NO | Full Cognito User Pool + App Client + Identity Provider config | Required for real OAuth and production auth |
-| Real OAuth secrets (Google/GitHub client IDs) | ❌ NO | AWS Secrets Manager or SSM params for OAuth client IDs/secrets | Required for real Google/GitHub OAuth flows |
-| OAUTH_CALLBACK_BASE_URL env var on auth Lambda | ❌ NO | Needs env var pointing to CloudFront domain per environment | Currently hardcoded localhost:3000 in oauthStubAdapter |
-| API Gateway Lambda Authorizer | ❌ NO | JWT authorizer to protect routes at API GW level | Currently only handler-level validation |
-| Per-route throttling on auth endpoints | ❌ NO | Throttle overrides for /auth/register and /auth/login specifically | Only global API GW throttle: 2/s (dev), 10/s (prod) |
-| AUTH_MODE env var for real mode | ❌ NO (set to 'mock') | AUTH_MODE=cognito for staging/prod environments | Currently hardcoded to 'mock' in CDK for ALL environments |
-| APP_RUNTIME env var for real mode | ❌ NO (set to 'local') | Remove or update APP_RUNTIME for Lambda deployments | Set to 'local' which may affect internal logic |
+| All auth API routes wired (including refresh) | ✅ YES | — | register, login, logout, refresh, oauth/{provider}, callback/{provider} |
+| JWT_SECRET from Secrets Manager | ✅ YES | — | /learnfyra/{env}/jwt-secret resolved via SecretValue.secretsManager() |
+| Cognito User Pool | ✅ YES | — | User pool + app client + Google IdP + user pool domain configured |
+| Real OAuth secrets (Google/GitHub client IDs) | ✅ YES (Google) | GitHub IdP secret wiring | Google client secret resolved from Secrets Manager; GitHub deferred |
+| OAUTH_CALLBACK_BASE_URL env var on auth Lambda | ✅ YES | — | Injected via CDK with environment-specific domain |
+| API Gateway Lambda Authorizer | ✅ YES | — | Custom token authorizer is wired for protected API methods |
+| Per-route throttling on auth endpoints | ✅ YES | OAuth-specific throttling policy | /auth/register and /auth/login set to 1/s burst 2 |
+| AUTH_MODE env var for real mode | ✅ YES | Optional dev-specific fallback strategy | AUTH_MODE=cognito configured in CDK Lambda env |
+| APP_RUNTIME env var for real mode | ✅ YES (removed) | — | APP_RUNTIME=local no longer injected |
 | CloudWatch alarm for auth errors | ✅ YES | — | Error + duration + error-rate alarms defined |
 
 ## 4.3 M03 Generator — IaC Gap Analysis
@@ -250,24 +250,18 @@
 
 | Workflow File | Trigger | What It Does | Gaps |
 |---|---|---|---|
-| ci.yml | PR/push to main/develop/staging | npm test + coverage gate (≥80%) + CDK synth + CDK tests | No integration test step; coverage gate uses string not JSON |
-| deploy-dev.yml | workflow_dispatch (manual) | Tests → AWS OIDC → SSM write API key → CDK bootstrap → CDK deploy → S3 frontend sync | AUTH_MODE=mock deployed to AWS dev; no JWT_SECRET SSM write step; no smoke tests after deploy |
-| deploy-staging.yml | (not read — assumed exists) | Similar to dev | Needs audit |
-| deploy-prod.yml | (not read — assumed exists) | Manual approval gate → prod deploy | Needs audit |
+| ci.yml | PR/push to main/develop/staging | npm test (unit + integration) + coverage gate (≥80%) + CDK synth + CDK tests | Add explicit split reporting for unit/integration jobs if needed |
+| deploy-dev.yml | workflow_dispatch (manual) | Tests → AWS OIDC → Secrets Manager writes (Anthropic/JWT/Google secret) → CDK bootstrap → CDK deploy → S3 frontend sync | Add post-deploy smoke tests |
+| deploy-staging.yml | workflow_dispatch (manual) | Same pattern as dev, with staging secrets + deploy | Add post-deploy smoke tests |
+| deploy-prod.yml | workflow_dispatch (manual) | Manual approval + tests + production secrets write + deploy | Add post-deploy smoke tests |
 
 ## 4.5 Critical IaC Blockers (M01 + M03)
 
 | BLOCKER | Description | Impact | Priority |
 |---|---|---|---|
-| AUTH_MODE=mock hardcoded in CDK for ALL environments | Even in staging/prod Lambda, AUTH_MODE=mock means only the mock adapter runs — real auth never executes on AWS | Auth never works as real system on AWS | P0 CRITICAL |
-| APP_RUNTIME=local in Lambda env | Some code may branch on APP_RUNTIME; set to 'local' in Lambda environment | Undefined behavior in cloud | P0 |
-| No Cognito User Pool in CDK | Cannot do real OAuth without Cognito Hosted UI or direct PKCE | Real OAuth impossible on AWS | P0 |
-| No OAuth secrets in Secrets Manager | Google/GitHub client IDs/secrets not stored anywhere in AWS | Real OAuth flows cannot authenticate | P0 |
-| OAUTH_CALLBACK_BASE_URL not wired | Callback URL hardcoded to localhost:3000 in oauthStubAdapter | OAuth callbacks fail in AWS | P0 |
+| Admin role not fully implemented end-to-end | TASK-AUTH-003 marked done earlier but register VALID_ROLES still excludes admin | Admin provisioning and route contracts remain inconsistent | P0 |
 | Question bank is local JSON only | QB_ADAPTER=local in Lambda — reads from data-local/ which doesn't exist in Lambda /tmp | Question bank features non-functional in AWS | P1 |
-| No API Gateway authorizer | Protected routes have no gateway-level enforcement | Unauthorized traffic reaches Lambda | P1 |
-| No per-route auth endpoint throttling | Auth endpoints shared with global 10/s limit — brute force risk | Security gap | P1 |
-| deploy-dev.yml writes Anthropic SSM param but NOT JWT_SECRET SSM param | JWT_SECRET SSM param must be pre-populated manually or added to deploy workflow | JWT signing fails on cold Lambda if param missing | P0 |
+| OAuth second provider (GitHub/Microsoft) still not implemented | Cognito/user-flow is Google-only currently | Multi-provider requirement remains open | P1 |
 
 ---
 
@@ -279,19 +273,19 @@
 |---|---|---|---|---|---|---|
 | TASK-AUTH-001 | Define real OAuth contract (Google + GitHub): PKCE flow, callback URL strategy, env var design | P0 | done | — | Contract document approved, redirect URI strategy decided for all envs | architect-agent |
 | TASK-AUTH-002 | Define Cognito vs custom JWT decision: token refresh strategy, access/refresh token lifecycle | P0 | done | — | Decision recorded in GAP table, approach chosen | architect-agent |
-| TASK-AUTH-003 | Add admin role: extend VALID_ROLES, add 'admin' to register, authHandler, and assertRole tests | P0 | done | DEC-AUTH-005 | admin role accepted in register; assertRole(['admin']) blocks non-admin; tests pass | dev-agent |
+| TASK-AUTH-003 | Add admin role: extend VALID_ROLES, add 'admin' to register, authHandler, and assertRole tests | P0 | in-progress | DEC-AUTH-005 | assertRole admin coverage is in place, but authHandler VALID_ROLES still excludes admin; complete register contract + tests | dev-agent |
 | TASK-AUTH-004 | Implement real Google OAuth flow: real PKCE, token exchange, user lookup/create from Google profile | P0 | done | TASK-AUTH-001, TASK-AUTH-013 (Cognito IaC) | POST /api/auth/oauth/google returns real Google consent URL; callback issues real JWT; integration test passes | dev-agent |
-| TASK-AUTH-005 | Implement real GitHub OAuth flow: real token exchange, user lookup/create from GitHub profile | P1 | todo | TASK-AUTH-001, TASK-AUTH-013 (Cognito IaC) | POST /api/auth/oauth/github returns real consent URL; callback works; integration test passes | dev-agent |
+| TASK-AUTH-005 | Implement second OAuth provider flow (Phase 2): real token exchange, user lookup/create | P1 | todo | TASK-AUTH-001, TASK-AUTH-013, TASK-AUTH-015 | Deferred to Phase 2. Provider TBD (GitHub or Microsoft) and starts after API Gateway authorizer completion. | dev-agent |
 | TASK-AUTH-006 | Implement token refresh endpoint: POST /api/auth/refresh | P1 | done | TASK-AUTH-002 | Valid refresh token → new access token; expired refresh token → 401; tests pass | dev-agent |
 | TASK-AUTH-007 | Add parent-child link enforcement: validate parentLinks before parent accesses student data | P1 | done | — | Parent with no linked child → 403 with link guidance; linked parent → access granted; tests pass | dev-agent |
 | TASK-AUTH-008 | Write auth integration test: full register → login → access protected route → logout flow | P0 | done | — | Integration test covers register, login, token use on protected route, logout; all pass | qa-agent |
 | TASK-AUTH-009 | Implement multi-provider account linking: same email, Google + GitHub | P2 | todo | TASK-AUTH-004, TASK-AUTH-005 | Same email via second provider links to existing account; no duplicate user created; tests pass | dev-agent |
-| TASK-AUTH-010 | Remove AUTH_MODE=mock and APP_RUNTIME=local from CDK Lambda env for non-dev environments | P0 | done | TASK-AUTH-013 | Staging/prod Lambda env: AUTH_MODE=cognito (or appropriate real mode); dev: mock kept | devops-agent |
+| TASK-AUTH-010 | Remove AUTH_MODE=mock and APP_RUNTIME=local from CDK Lambda env for non-dev environments | P0 | done | TASK-AUTH-013 | CDK Lambda envs now use AUTH_MODE=cognito and APP_RUNTIME=local is removed | devops-agent |
 | TASK-AUTH-011 | Add OAUTH_CALLBACK_BASE_URL env var to auth Lambda in CDK per environment | P0 | done | TASK-AUTH-001 | dev: CloudFront domain, staging: CloudFront staging URL, prod: CloudFront prod URL | devops-agent |
 | TASK-AUTH-012 | Set up JWT_SECRET in Secrets Manager + write step in deploy workflows (all envs) | P0 | done | — | deploy-dev.yml, deploy-staging.yml, deploy-prod.yml each write JWT_SECRET to Secrets Manager before CDK deploy; CDK uses SecretValue.secretsManager() | devops-agent |
 | TASK-AUTH-013 | Add Cognito User Pool + App Client + Google identity provider to CDK | P0 | done | TASK-AUTH-002 | CDK synth passes; Cognito User Pool defined; Google IdP configured; App Client with authorizationCodeGrant + PKCE | devops-agent |
 | TASK-AUTH-014 | Store OAuth client IDs and secrets in AWS Secrets Manager and wire to auth Lambda | P0 | done | TASK-AUTH-013 | Google OAuth credentials in Secrets Manager; auth Lambda has Cognito env vars injected | devops-agent |
-| TASK-AUTH-015 | Add API Gateway Lambda Authorizer for protected routes | P1 | todo | TASK-AUTH-013 | API GW blocks unauthenticated requests before Lambda invoke on protected routes; CDK updated | devops-agent |
+| TASK-AUTH-015 | Add API Gateway Lambda Authorizer for protected routes | P1 | done | TASK-AUTH-013 | Custom token authorizer is wired in CDK and applied to protected API methods, blocking unauthorized calls before integration invoke | devops-agent |
 | TASK-AUTH-016 | Add per-route throttle overrides on auth endpoints (/register, /login) in CDK | P0 | done | — | /auth/register and /auth/login have stricter throttle than global (1/s burst 2) | devops-agent |
 | TASK-AUTH-017 | Implement Cognito auth adapter: src/auth/cognitoAdapter.js — PKCE, token exchange, JWT issue | P0 | done | TASK-AUTH-013 | AUTH_MODE=cognito routes to cognitoAdapter; PKCE + signed state CSRF protection; email_verified check; 1277 tests passing | dev-agent |
 | TASK-AUTH-018 | Security review: review entire auth flow for OWASP Top 10 gaps | P0 | done | TASK-AUTH-003 through TASK-AUTH-009 | Security review completed; all 4 CRITICAL findings resolved (PKCE, CSRF state, JWT SecureString, /refresh API GW route); HIGH-1/2/4/5 also fixed | code-reviewer-agent |
@@ -306,12 +300,12 @@
 | TASK-GEN-004 | Add teacherId to metadata.json and solve-data.json from JWT payload after validateToken | P1 | done | TASK-GEN-001 | metadata contains teacherId from decoded.sub; solve-data.json also contains teacherId; tests pass | dev-agent |
 | TASK-GEN-005 | Define generation quota contract: per-teacher daily limit, quota enforcement approach decision | P1 | todo | — | Architecture decision recorded: API GW usage plan vs DynamoDB counter — quota contract spec written | architect-agent + ba-agent |
 | TASK-GEN-006 | Write generator bank-first integration test: full flow POST /api/generate → bank query → AI fill → S3 → response | P0 | done | — | tests/integration/generateFlow.test.js — 75 tests covering full/partial/empty bank, auth 401/403, solve-data.json, teacherId, backward compat, S3 failure | qa-agent |
-| TASK-GEN-007 | Input validation hardening: add max length constraints to topic, studentName, worksheetDate fields | P1 | todo | — | Oversized inputs rejected with 400; tests cover boundary values | dev-agent |
+| TASK-GEN-007 | Input validation hardening: add max length constraints to topic, studentName, worksheetDate fields | P1 | in-progress | — | Validator hardening is implemented; complete/verify dedicated boundary test coverage for all fields | dev-agent |
 | TASK-GEN-008 | Resolve QB_ADAPTER strategy for production: define DynamoDB table schema and wiring plan (no code) | P1 | todo | — | DynamoDB single-table design documented; CDK task items created for IaC; QB adapter interface defined | architect-agent |
 | TASK-GEN-009 | Add DynamoDB table for question bank to CDK stack | P1 | todo | TASK-GEN-008 | CDK synth passes; DynamoDB table defined; generate Lambda has grantReadWriteData; CDK tests updated | devops-agent |
 | TASK-GEN-010 | Add LOW_COST_MODEL and PREMIUM_MODEL env vars to generate Lambda in CDK | P2 | todo | — | CDK env vars set; assembler.js reads them; model selection tests verify env override works | devops-agent |
 | TASK-GEN-011 | Add generator integration test to CI pipeline | P0 | done | TASK-GEN-006 | ci.yml "Run all tests" step runs npm test which includes tests/integration/; ANTHROPIC_API_KEY placeholder set in CI env | devops-agent |
-| TASK-GEN-012 | Security review: input sanitization, S3 key injection risks, API key exposure | P0 | todo | TASK-GEN-001 | Review report; all critical findings resolved; no user-controlled values in S3 key paths | code-reviewer-agent |
+| TASK-GEN-012 | Security review: input sanitization, S3 key injection risks, API key exposure | P0 | todo | TASK-GEN-001 | Security review report completed with critical/high findings either fixed or explicitly tracked | code-reviewer-agent |
 
 ---
 
@@ -319,16 +313,13 @@
 
 | GAP-NNN | Decision Needed | Blocking Tasks | Priority |
 |---|---|---|---|
-| GAP-001 | **OAuth redirect URL final values per env**: What are the exact CloudFront URLs for dev/staging/prod? Must be set before Cognito app client created. | TASK-AUTH-011, TASK-AUTH-013 | P0 |
-| GAP-002 | **Cognito vs custom JWT for production**: Use Cognito Hosted UI + PKCE (simpler, managed) vs build full PKCE flow with custom JWT (more control)? | TASK-AUTH-002, TASK-AUTH-013, TASK-AUTH-017 | P0 |
-| GAP-003 | **Token refresh strategy**: Short-lived access (1h) + long-lived refresh (30d) vs extend existing 7-day JWT? Cognito handles this natively if Cognito chosen. | TASK-AUTH-006 | P1 |
-| GAP-004 | **Admin role provisioning**: How are admin users created? Self-registration with promo code? Seeded user in DB? Manual AWS console? | TASK-AUTH-003 | P0 |
-| GAP-005 | **Rate limiting approach for auth**: API GW per-route throttle (simple, no infra) vs WAF rate-based rule (more powerful, adds cost) vs app-level Redis counter (most granular, most complex)? | TASK-AUTH-016 | P0 |
+| GAP-001 | **Admin role provisioning**: How are admin users created and managed if self-registration remains blocked? | TASK-AUTH-003 | P0 |
+| GAP-003 | **Rate limiting completion for OAuth endpoints**: Keep method throttle as-is or add oauth-specific caps/WAF rate rules? | TASK-AUTH-016 | P1 |
 | GAP-006 | **Worksheet ownership model in storage**: teacherId in metadata.json only, or also in S3 key prefix? S3 key: worksheets/{teacherId}/{date}/{uuid}/ for tenant isolation? | TASK-GEN-004, TASK-GEN-009 | P1 |
 | GAP-007 | **Question bank production storage**: DynamoDB confirmed as the right choice? Or PostgreSQL via RDS? DynamoDB preferred — decide table design (single-table vs per-entity). | TASK-GEN-008, TASK-GEN-009 | P1 |
 | GAP-008 | **Generation quota enforcement**: Per-teacher per-day counter in DynamoDB? Or API Gateway Usage Plan with per-key throttle? | TASK-GEN-005 | P2 |
-| GAP-009 | **Second OAuth provider selection**: GitHub or Microsoft? Affects Cognito IdP configuration. | TASK-AUTH-005 | P1 |
-| GAP-010 | **Parent-child link UX**: What happens when parent has no linked child? Redirect to link page? Error? In-app guided flow? Needed before TASK-AUTH-007 can proceed. | TASK-AUTH-007 | P1 |
+| GAP-009 | **Second OAuth provider selection**: GitHub or Microsoft? Affects Cognito IdP configuration. Decision: deferred to Phase 2; provider still TBD. | TASK-AUTH-005 | P1 |
+| GAP-010 | **Parent-child link UX**: What is the standard response/UX contract when a parent has no linked child? | TASK-AUTH-007 | P1 |
 
 ---
 
@@ -360,37 +351,23 @@
 
 Based on dependencies and blockers:
 
-**Wave 1 — Unblock everything (no code):**
-1. GAP-001: Get final CloudFront URLs for all environments
-2. GAP-002: Decide Cognito vs custom JWT
-3. GAP-004: Decide admin role provisioning
-4. GAP-009: Choose GitHub or Microsoft as second OAuth provider
-5. TASK-AUTH-001: OAuth contract document
-6. TASK-AUTH-002: Token refresh strategy decision
+**Wave 1 — Remaining decisions:**
+1. GAP-001: Decide admin provisioning model
+2. GAP-009: Keep second provider decision open for Phase 2 (GitHub vs Microsoft)
+3. GAP-007: Finalize production question bank data model
+4. GAP-008: Finalize generation quota strategy
 
-**Wave 2 — IaC foundation (devops-agent, no app code):**
-7. TASK-AUTH-012: JWT_SECRET SSM write in deploy workflows
-8. TASK-AUTH-016: Per-route throttle on auth endpoints
-9. TASK-AUTH-013: Cognito User Pool + IdPs in CDK
-10. TASK-AUTH-014: OAuth secrets in Secrets Manager
-11. TASK-AUTH-010: Remove AUTH_MODE=mock from non-dev envs
-12. TASK-AUTH-011: Add OAUTH_CALLBACK_BASE_URL to CDK
-13. TASK-GEN-009: DynamoDB question bank table in CDK (if approved)
+**Wave 2 — Security and platform hardening:**
+5. TASK-AUTH-015: API Gateway authorizer for protected routes (completed)
+6. GAP-003: Finalize OAuth endpoint throttling strategy
+7. TASK-GEN-012: Complete generator security review
 
-**Wave 3 — Application code (dev-agent):**
-14. TASK-AUTH-003: Add admin role
-15. TASK-AUTH-017: Cognito adapter
-16. TASK-AUTH-004: Real Google OAuth
-17. TASK-AUTH-005: Real GitHub OAuth
-18. TASK-GEN-001: Auth enforcement on POST /api/generate
-19. TASK-GEN-004: teacherId in metadata
-20. TASK-AUTH-006: Token refresh endpoint
-21. TASK-AUTH-007: Parent-child link enforcement
-
-**Wave 4 — Tests and review:**
-22. TASK-AUTH-008: Auth integration test
-23. TASK-GEN-002: Verify solve-data.json write
-24. TASK-GEN-003: Provenance metadata audit
-25. TASK-GEN-006: Generator bank-first integration test
-26. TASK-AUTH-018: Auth security review
-27. TASK-GEN-012: Generator security review
+**Wave 3 — Feature completion on open work:**
+8. TASK-AUTH-003: Finish admin role end-to-end implementation
+9. TASK-AUTH-005: Implement second OAuth provider (Phase 2, post-TASK-AUTH-015)
+10. TASK-AUTH-009: Implement multi-provider account linking
+11. TASK-GEN-003: Complete provenance metadata audit
+12. TASK-GEN-007: Complete validation boundary tests
+13. TASK-GEN-008: Publish QB_ADAPTER production contract
+14. TASK-GEN-009: Add DynamoDB table + IAM for question bank
+15. TASK-GEN-010: Add LOW_COST_MODEL and PREMIUM_MODEL env vars

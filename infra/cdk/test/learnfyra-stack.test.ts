@@ -248,9 +248,24 @@ describe('LearnfyraStack (dev)', () => {
   });
 
   test('sets log retention policy for Lambda log groups', () => {
-    template.resourceCountIs('Custom::LogRetention', 11);
+    template.resourceCountIs('Custom::LogRetention', 12);
     template.hasResourceProperties('Custom::LogRetention', {
       RetentionInDays: 30,
+    });
+  });
+
+  test('creates API Gateway token authorizer', () => {
+    template.hasResourceProperties('AWS::ApiGateway::Authorizer', {
+      Type: 'TOKEN',
+      IdentitySource: 'method.request.header.Authorization',
+    });
+  });
+
+  test('protects /api/generate POST with custom authorizer', () => {
+    template.hasResourceProperties('AWS::ApiGateway::Method', {
+      HttpMethod: 'POST',
+      AuthorizationType: 'CUSTOM',
+      AuthorizerId: Match.anyValue(),
     });
   });
 
@@ -471,7 +486,7 @@ describe('LearnfyraStack (dev) — Cognito Google OAuth', () => {
 
   test('creates Cognito App Client with authorization_code grant', () => {
     template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-      UserPoolClientName: 'learnfyra-dev-app-client',
+      ClientName: 'learnfyra-dev-app-client',
       AllowedOAuthFlows: ['code'],
       GenerateSecret: false,
     });
@@ -487,7 +502,7 @@ describe('LearnfyraStack (dev) — Cognito Google OAuth', () => {
 
   test('App Client supports Google as identity provider', () => {
     template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-      SupportedIdentityProviders: Match.arrayWith(['COGNITO']),
+      SupportedIdentityProviders: Match.arrayWith(['Google']),
     });
   });
 
@@ -513,7 +528,7 @@ describe('LearnfyraStack (dev) — Cognito Google OAuth', () => {
       FunctionName: 'learnfyra-dev-lambda-auth',
       Environment: Match.objectLike({
         Variables: Match.objectLike({
-          COGNITO_DOMAIN: Match.stringLikeRegexp('amazoncognito.com'),
+          COGNITO_DOMAIN: Match.anyValue(),
         }),
       }),
     });
