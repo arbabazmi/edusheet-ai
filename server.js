@@ -13,6 +13,7 @@
 
 import 'dotenv/config';
 import express from 'express';
+import morgan from 'morgan';
 import { randomUUID } from 'crypto';
 import { mkdirSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -82,6 +83,7 @@ function serializeError(err) {
 
 // ── Express app ───────────────────────────────────────────────────────────────
 const app = express();
+app.use(morgan('dev'));
 app.use(express.json());
 
 // Serve the frontend

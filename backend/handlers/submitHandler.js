@@ -12,7 +12,8 @@ import { promises as fs } from 'fs';
 import { join, dirname, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+// __dirname is not available in Lambda CJS bundle; use process.cwd() for root
+const __dirname = process.cwd();
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || '*',

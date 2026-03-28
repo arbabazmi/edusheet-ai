@@ -7,9 +7,14 @@
 
 import jwt from 'jsonwebtoken';
 
+const isAwsRuntime = process.env.APP_RUNTIME === 'aws';
+const isProdLike = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
+
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
-  if (process.env.NODE_ENV !== 'development') {
-    throw new Error('JWT_SECRET environment variable is required in non-development environments');
+  // Local dev often runs with NODE_ENV unset. Require explicit JWT_SECRET only
+  // in production-like or AWS runtimes.
+  if (isAwsRuntime || isProdLike) {
+    throw new Error('JWT_SECRET environment variable is required in staging/production and AWS runtimes');
   }
   return 'learnfyra-local-dev-secret';
 })();
