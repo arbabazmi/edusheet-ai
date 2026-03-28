@@ -14,6 +14,7 @@
 | [MISSING] | Not implemented at all |
 | [INFERRED] | Not in original spec but clearly required |
 | todo | Task not started |
+| spec-ready | BA spec written — ready for DEV/QA to implement |
 | in-progress | Task actively being worked |
 | done | Task complete and tested |
 
@@ -301,16 +302,16 @@
 |---|---|---|---|---|---|---|
 | TASK-GEN-001 | Add auth enforcement to POST /api/generate: validateToken + assertRole(['teacher','admin']) | P0 | done | TASK-AUTH-003 | Unauthenticated generate → 401; student JWT → 403; teacher JWT → proceeds; 7 auth tests pass | dev-agent |
 | TASK-GEN-002 | Add solve-data.json upload to S3 in generateHandler (Lambda path) | P0 | done | — | solve-data.json uploaded as 2nd S3 PutObjectCommand with worksheetId + teacherId + questions; 5 tests pass; server.js local path was already implemented | qa-agent |
-| TASK-GEN-003 | Audit provenance metadata: confirm every question in assembled worksheet has source field (banked vs generated) | P1 | todo | — | Assembler output inspection — all questions have { source: 'bank' } or { source: 'ai' } field | qa-agent |
+| TASK-GEN-003 | Audit provenance metadata: confirm every question in assembled worksheet has source field (banked vs generated) | P1 | spec-ready | — | BA spec in Part 9.1. Assembler output: every question has `source: 'bank'` or `source: 'ai'`; provenanceLevel controls whether bankEntryId is appended; QA tests in assembler.test.js and generateFlow.test.js | qa-agent |
 | TASK-GEN-004 | Add teacherId to metadata.json and solve-data.json from JWT payload after validateToken | P1 | done | TASK-GEN-001 | metadata contains teacherId from decoded.sub; solve-data.json also contains teacherId; tests pass | dev-agent |
-| TASK-GEN-005 | Define generation quota contract: per-teacher daily limit, quota enforcement approach decision | P1 | todo | — | Architecture decision recorded: API GW usage plan vs DynamoDB counter — quota contract spec written | architect-agent + ba-agent |
+| TASK-GEN-005 | Define generation quota contract: per-teacher daily limit, quota enforcement approach decision | P1 | spec-ready | — | BA spec in Part 9.2. Decision: DynamoDB counter (PK=QUOTA#TEACHER#{id}, SK=DATE#{date}). Default 50/day. 429 with WG_QUOTA_EXCEEDED + quotaResetAt. Check runs before AI at stage 'quota:check'. Best-effort failure (non-blocking). Open: architect to confirm blocking vs best-effort. | architect-agent + ba-agent |
 | TASK-GEN-006 | Write generator bank-first integration test: full flow POST /api/generate → bank query → AI fill → S3 → response | P0 | done | — | tests/integration/generateFlow.test.js — 75 tests covering full/partial/empty bank, auth 401/403, solve-data.json, teacherId, backward compat, S3 failure | qa-agent |
-| TASK-GEN-007 | Input validation hardening: add max length constraints to topic, studentName, worksheetDate fields | P1 | in-progress | — | Validator hardening is implemented; complete/verify dedicated boundary test coverage for all fields | dev-agent |
-| TASK-GEN-008 | Resolve QB_ADAPTER strategy for production: define DynamoDB table schema and wiring plan (no code) | P1 | todo | — | DynamoDB single-table design documented; CDK task items created for IaC; QB adapter interface defined | architect-agent |
-| TASK-GEN-009 | Add DynamoDB table for question bank to CDK stack | P1 | todo | TASK-GEN-008 | CDK synth passes; DynamoDB table defined; generate Lambda has grantReadWriteData; CDK tests updated | devops-agent |
+| TASK-GEN-007 | Input validation hardening: add max length constraints to topic, studentName, worksheetDate fields | P1 | done | — | topic: max 200 chars + prompt-injection char block (", newline, null); studentName/teacherName: max 80 chars; period: max 40; className: max 80; worksheetDate: YYYY-MM-DD format; all enforced in validateGenerateBody | dev-agent |
+| TASK-GEN-008 | Resolve QB_ADAPTER strategy for production: define DynamoDB table schema and wiring plan (no code) | P1 | spec-ready | — | BA spec in Part 9.3. Canonical table schema: PK=QUESTION#{uuid}/SK=METADATA. GSI1=CurriculumQuery, GSI2=DifficultyQuery, GSI3=HashIndex. Interface: getQuestionsForCriteria, addIfNotExists, recordQuestionReuse. Adapter factory routes QB_ADAPTER=dynamodb|local. | architect-agent |
+| TASK-GEN-009 | Add DynamoDB table for question bank to CDK stack | P1 | spec-ready | TASK-GEN-008 | BA spec in Part 9.4. CDK construct spec with GSI1/GSI2/GSI3 definitions. QB_TABLE_NAME env var injected. grantReadWriteData. RETAIN/DESTROY policy per env. CloudWatch alarms for SystemErrors/UserErrors. CDK assertion test required. | devops-agent |
 | TASK-GEN-010 | Add LOW_COST_MODEL and PREMIUM_MODEL env vars to generate Lambda in CDK | P2 | todo | — | CDK env vars set; assembler.js reads them; model selection tests verify env override works | devops-agent |
 | TASK-GEN-011 | Add generator integration test to CI pipeline | P0 | done | TASK-GEN-006 | ci.yml "Run all tests" step runs npm test which includes tests/integration/; ANTHROPIC_API_KEY placeholder set in CI env | devops-agent |
-| TASK-GEN-012 | Security review: input sanitization, S3 key injection risks, API key exposure | P0 | todo | TASK-GEN-001 | Security review report completed with critical/high findings either fixed or explicitly tracked | code-reviewer-agent |
+| TASK-GEN-012 | Security review: input sanitization, S3 key injection risks, API key exposure | P0 | done | TASK-GEN-001 | Two-pass code-reviewer-agent review completed (2026-03-28). CRITICAL: C1 prompt-injection via topic (fixed — char block + quote escape); C2 teacherId unsanitized in S3 (fixed — format validation + removed from response). HIGH: H1 local file path in logs (fixed); H2 bucket name in logs (fixed); H3 CORS wildcard (fixed — prod guard); H4 clientRequestId header injection (fixed — sanitize on read). MEDIUM: M1 stack traces in prod logs (fixed — prod-gated); M2 worksheet spread in solve-data (fixed — explicit field list); M4 MAX_RETRIES unbounded (fixed — clamped to 5). All fixes committed to branch security/gen-012-fixes. | code-reviewer-agent |
 | TASK-GEN-013 | Define and verify request-scoped uniqueness contract for worksheet generation | P0 | todo | TASK-GEN-006 | Contract documents exclusion-set behavior for bank + AI assembly, and QA proves a single worksheet request cannot return duplicate or near-duplicate questions | architect-agent + qa-agent |
 | TASK-GEN-014 | Define backend contract for future-session repeat cap (default 10%) and override precedence/validation | P0 | todo | TASK-GEN-013 | Contract defines matching key for same student+grade+difficulty sessions, cap calculation, scope precedence (student>parent>teacher>default), and validation range 0..100 | architect-agent + ba-agent |
 | TASK-GEN-015 | Add QA coverage plan for repeat-cap enforcement and admin override scopes | P0 | todo | TASK-GEN-014 | QA verifies default 10%, 0%, 100%, and mixed scope precedence cases against future-session generation behavior | qa-agent |
@@ -366,20 +367,433 @@ Based on dependencies and blockers:
 3. GAP-007: Finalize production question bank data model
 4. GAP-008: Finalize generation quota strategy
 
-**Wave 2 — Security and platform hardening:**
-5. TASK-AUTH-015: API Gateway authorizer for protected routes (completed)
-6. GAP-003: Finalize OAuth endpoint throttling strategy
-7. TASK-GEN-012: Complete generator security review
+**Wave 2 — Security and platform hardening: ✅ COMPLETE**
+5. TASK-AUTH-015: API Gateway authorizer for protected routes ✅ done
+6. GAP-003: Finalize OAuth endpoint throttling strategy ✅ done (per-route throttle set)
+7. TASK-GEN-012: Generator security review ✅ done (2026-03-28, branch security/gen-012-fixes)
 
 **Wave 3 — Feature completion on open work:**
 8. TASK-AUTH-003: Finish admin role end-to-end implementation
 9. TASK-AUTH-005: Implement second OAuth provider (Phase 2, post-TASK-AUTH-015)
 10. TASK-AUTH-009: Implement multi-provider account linking
-11. TASK-GEN-003: Complete provenance metadata audit
-12. TASK-GEN-007: Complete validation boundary tests
-13. TASK-GEN-008: Publish QB_ADAPTER production contract
-14. TASK-GEN-009: Add DynamoDB table + IAM for question bank
+11. TASK-GEN-003: Provenance metadata audit (BA spec → Part 9.1)
+12. TASK-GEN-005: Generation quota contract (BA spec → Part 9.2)
+13. TASK-GEN-008: QB_ADAPTER DynamoDB schema decision (BA spec → Part 9.3)
+14. TASK-GEN-009: Add DynamoDB table + IAM for question bank (BA spec → Part 9.4)
 15. TASK-GEN-010: Add LOW_COST_MODEL and PREMIUM_MODEL env vars
 16. TASK-GEN-013: Publish and validate request-scoped uniqueness contract
 17. TASK-GEN-014: Publish repeat-cap policy contract and precedence rules
 18. TASK-GEN-015: Add repeat-cap QA matrix and validation plan
+
+---
+
+## PART 5 — New Tasks: DynamoDB Migration + Cognito Upgrade (2026-03-27)
+
+These tasks extend M01 Auth and M02/M03 Generator work for full production readiness.
+They do not duplicate any tasks in Parts 1–4 above.
+All new tasks start at status: **not-started**.
+
+---
+
+### 5.3 M01 Auth — DynamoDB Migration + Cognito Integration
+
+| Task ID | Title | Priority | Status | Depends On | Owner Agent |
+|---|---|---|---|---|---|
+| TASK-AUTH-019 | Migrate auth storage from in-memory/JSON to DynamoDB Users table | P0 | not-started | TASK-AUTH-020 (CDK table must exist first) | dev-agent |
+| TASK-AUTH-020 | Add DynamoDB Users table to CDK + wire grantReadWriteData to auth Lambda | P0 | not-started | — | devops-agent |
+| TASK-AUTH-021 | Integrate Cognito User Pool with existing authHandler for production path | P0 | not-started | TASK-AUTH-013, TASK-AUTH-019 | dev-agent |
+| TASK-AUTH-022 | Promote Lambda Authorizer to standalone function replacing handler-level JWT checks | P1 | not-started | TASK-AUTH-015 | dev-agent + devops-agent |
+
+**Acceptance criteria:**
+
+- **TASK-AUTH-019:** POST /api/auth/register writes user record to DynamoDB Users table (PK=USER#{userId}, SK=PROFILE). POST /api/auth/login reads from DynamoDB. data-local/users.json is no longer the authoritative store on production path. All existing auth tests pass with aws-sdk-client-mock replacing JSON file mock.
+- **TASK-AUTH-020:** CDK synth passes zero warnings. Users table: PK=USER#{userId}, SK=PROFILE. GSI1: PK=ROLE#{role}, SK=CREATED#{createdAt}. Prod RemovalPolicy.RETAIN. Dev/staging RemovalPolicy.DESTROY. CDK assertion test confirms table + GSI.
+- **TASK-AUTH-021:** AUTH_MODE=cognito routes register/login through cognitoAdapter. cognitoAdapter.registerUser() creates user in Cognito pool AND writes profile to DynamoDB. AUTH_MODE=mock keeps mockAuthAdapter. Integration test passes with Cognito mock.
+- **TASK-AUTH-022:** Lambda Authorizer deployed as standalone NodejsFunction in CDK. All protected API Gateway routes use it. Individual handlers no longer call validateToken() themselves. Existing protected route tests updated. CORS on 401/403 from authorizer confirmed.
+
+---
+
+### 5.4 M02 Question Bank — DynamoDB Migration
+
+| Task ID | Title | Priority | Status | Depends On | Owner Agent |
+|---|---|---|---|---|---|
+| TASK-QB-003 | Add DynamoDB QuestionBank table to CDK with curriculum query GSIs | P1 | not-started | — | devops-agent |
+| TASK-QB-004 | Migrate question bank from local JSON adapter to DynamoDB adapter | P1 | not-started | TASK-QB-003 | dev-agent |
+| TASK-QB-005 | Wire QB_ADAPTER=dynamodb to generate Lambda in CDK for staging/prod | P1 | not-started | TASK-QB-003, TASK-QB-004 | devops-agent |
+
+**Acceptance criteria:**
+
+- **TASK-QB-003:** CDK synth passes zero warnings. QuestionBank table: PK=QUESTION#{questionId}, SK=METADATA. GSI1: PK=GRADE#{grade}#SUBJECT#{subject}, SK=TOPIC#{topic}#DIFF#{difficulty}. GSI2: PK=DIFFICULTY#{difficulty}, SK=SUBJECT#{subject}#GRADE#{grade}. Generate Lambda: grantReadWriteData. CDK assertion test confirms table + GSIs.
+- **TASK-QB-004:** QB_ADAPTER=dynamodb routes all reads/writes to DynamoDB. getQuestionsForCriteria(), addIfNotExists() (conditional write for dedup), recordQuestionReuse() (UpdateItem increment) all work against DynamoDB. All existing questionBank unit tests pass with aws-sdk-client-mock.
+- **TASK-QB-005:** CDK sets QB_ADAPTER=dynamodb on generate Lambda in staging and prod. QB_ADAPTER=local remains in dev. CDK assertion test confirms env-specific value.
+
+---
+
+### 5.5 Agent Prompt Pack — New DynamoDB Migration Tasks
+
+#### TASK-AUTH-019
+```text
+Agent: dev-agent
+Mode: standard
+Task ID: TASK-AUTH-019
+Goal: Migrate auth user storage from local JSON file to DynamoDB Users table.
+Inputs:
+  - docs/tasks/backend/M01-M03-REQUIREMENTS-AND-TASKS.md Part 5.3
+  - src/auth/mockAuthAdapter.js (read before modifying — reads/writes data-local/users.json)
+  - backend/handlers/authHandler.js (read before modifying)
+  - DynamoDB Users table schema: PK=USER#{userId}, SK=PROFILE (from TASK-AUTH-020 output)
+  - tests/unit/authHandler.test.js (read — these must all keep passing)
+Deliverables:
+  - src/auth/dynamoAuthAdapter.js: new adapter implementing same interface as mockAuthAdapter
+    (getUserByEmail, createUser, updateUser) using DynamoDB PutItem/GetItem/Query
+  - src/auth/index.js updated: AUTH_MODE=cognito|dynamodb → dynamoAuthAdapter; AUTH_MODE=mock → mockAuthAdapter
+  - All existing auth handler tests pass with aws-sdk-client-mock substituted for JSON file mock
+  - No data-local/users.json reads in production code paths
+Constraints: mockAuthAdapter must remain functional for AUTH_MODE=mock. No real AWS calls in tests.
+Output: files changed, test results, migration notes.
+```
+
+#### TASK-AUTH-020
+```text
+Agent: devops-agent
+Mode: standard
+Task ID: TASK-AUTH-020
+Goal: Add DynamoDB Users table to CDK stack.
+Inputs:
+  - infra/cdk/lib/learnfyra-stack.ts (read before modifying)
+  - docs/requirements/platform/Database.md
+  - docs/requirements/platform/learnfyra_auth_module.md
+  - docs/tasks/backend/M01-M03-REQUIREMENTS-AND-TASKS.md Part 5.3
+Deliverables:
+  - Users table: PK=USER#{userId}, SK=PROFILE
+  - Attributes: userId, email, name, role, provider, createdAt, lastLogin, activeFlag, linkedChildIds
+  - GSI1: PK=ROLE#{role}, SK=CREATED#{createdAt} (for admin user listing by role)
+  - Auth Lambda: grantReadWriteData
+  - Prod: RemovalPolicy.RETAIN; Dev/staging: RemovalPolicy.DESTROY
+  - CDK synth passes zero warnings
+  - CDK assertion test in infra/test/ confirms table name and GSI
+Constraints: IaC only. No handler code in this task. No hardcoded ARNs.
+Output: CDK diff, table/GSI inventory, synth evidence.
+```
+
+#### TASK-QB-003
+```text
+Agent: devops-agent
+Mode: standard
+Task ID: TASK-QB-003
+Goal: Add DynamoDB QuestionBank table to CDK with curriculum query GSIs.
+Inputs:
+  - infra/cdk/lib/learnfyra-stack.ts (read before modifying)
+  - docs/requirements/platform/Database.md
+  - docs/tasks/backend/M01-M03-REQUIREMENTS-AND-TASKS.md Part 5.4
+Deliverables:
+  - QuestionBank table: PK=QUESTION#{questionId}, SK=METADATA
+  - Attributes: questionId, subject, grade, topic, difficulty, questionText, options,
+    correctAnswer, explanation, modelUsed, createdAt, tags, reuseCount, status (ACTIVE/FLAGGED/APPROVED), hash
+  - GSI1: PK=GRADE#{grade}#SUBJECT#{subject}, SK=TOPIC#{topic}#DIFF#{difficulty}
+  - GSI2: PK=DIFFICULTY#{difficulty}, SK=SUBJECT#{subject}#GRADE#{grade}
+  - Generate Lambda: grantReadWriteData
+  - Prod: RemovalPolicy.RETAIN; Dev/staging: RemovalPolicy.DESTROY
+  - CDK synth passes zero warnings
+  - CDK assertion test confirms table, GSI1, GSI2
+Constraints: IaC only. No handler code in this task.
+Output: CDK diff, table/GSI inventory, synth evidence.
+```
+
+#### TASK-QB-004
+```text
+Agent: dev-agent
+Mode: standard
+Task ID: TASK-QB-004
+Goal: Implement DynamoDB adapter for question bank to replace local JSON adapter in production.
+Inputs:
+  - docs/tasks/backend/M01-M03-REQUIREMENTS-AND-TASKS.md Part 5.4
+  - src/ai/questionBank.js (read current state before modifying)
+  - QuestionBank DynamoDB table schema from TASK-QB-003
+  - tests/unit/assembler.test.js and any question bank unit tests (read — must keep passing)
+Deliverables:
+  - src/ai/questionBankDynamoAdapter.js implementing:
+    - getQuestionsForCriteria(grade, subject, topic, difficulty, limit) → queries GSI1
+    - addIfNotExists(question) → conditional PutItem using hash attribute for dedup
+    - recordQuestionReuse(questionId) → UpdateItem to increment reuseCount
+  - src/ai/questionBank.js factory updated: QB_ADAPTER=dynamodb routes to DynamoDB adapter; QB_ADAPTER=local keeps existing JSON adapter
+  - All existing assembler and question bank tests pass with aws-sdk-client-mock
+  - No data-local/questions.json reads in QB_ADAPTER=dynamodb code path
+Constraints: Local JSON adapter must remain working for QB_ADAPTER=local. No real AWS calls in tests.
+Output: files changed, adapter interface doc, test results.
+```
+
+---
+
+# PART 9 — BA Specs: Pending M03 Tasks (2026-03-28)
+
+**Author:** BA Agent | **Date:** 2026-03-28 | **Status:** Ready for DEV + QA
+
+---
+
+## 9.1 TASK-GEN-003 — Provenance Metadata Audit
+
+### Feature: Per-Question Source Attribution (banked vs AI-generated)
+
+**User Story**
+As a **teacher** reviewing a generated worksheet, I want to know which questions came from the bank and which were AI-generated, so that I can trust the content provenance and understand question reuse history.
+
+**Context**
+REQ-GEN-009 requires every question to include a `source` field. The assembler (`src/ai/assembler.js`) sets `source: 'bank'` on selected banked questions and is expected to set `source: 'ai'` on generated questions before the merge step. This task confirms that behavior is complete, consistent, and tested — it does not add new features.
+
+**Acceptance Criteria**
+
+| # | Given | When | Then |
+|---|---|---|---|
+| AC-003-01 | A full-bank worksheet (all from bank) | Assembler merges and returns worksheet | Every question object has `source: 'bank'` |
+| AC-003-02 | An empty-bank worksheet (all AI-generated) | Assembler merges and returns worksheet | Every question object has `source: 'ai'` |
+| AC-003-03 | A partial-bank worksheet (mixed) | Assembler merges and returns worksheet | Banked questions have `source: 'bank'`; AI questions have `source: 'ai'`; no question is missing the field |
+| AC-003-04 | provenanceLevel='full' | Assembler returns worksheet | Each question also has a `bankEntryId` or `null` — bank questions carry their original `questionId`, AI questions carry `null` |
+| AC-003-05 | provenanceLevel='summary' | Assembler returns worksheet | Questions have `source` only; no `bankEntryId` appended |
+| AC-003-06 | provenanceLevel='none' | Assembler returns worksheet | Questions do NOT have `source` or `bankEntryId` |
+| AC-003-07 | Assembled worksheet saved as solve-data.json | S3 JSON inspected | `source` field is present on each question (stripped by explicit field list if provenanceLevel='none') |
+
+**Out of Scope**
+- Displaying provenance in the worksheet PDF/HTML (frontend concern)
+- Changing the question bank schema or add new fields
+
+**QA Test Locations**
+- `tests/unit/assembler.test.js` — add describe block "provenance metadata per question"
+- `tests/integration/generateFlow.test.js` — add assertion on question[n].source for each bank scenario
+
+**Open Questions**
+- Does provenanceLevel='none' strip `source` before returning worksheet, or does it just omit the bankEntryId summary? **Decision needed from architect before QA writes tests.**
+
+---
+
+## 9.2 TASK-GEN-005 — Generation Quota Contract
+
+### Feature: Per-Teacher Daily Worksheet Generation Quota
+
+**User Story**
+As a **platform operator**, I want to enforce a daily limit on worksheet generation per teacher, so that I can prevent runaway API cost from a single account and support future billing tiers.
+
+**As a **teacher**, I want a clear error message when I hit my daily quota, so that I understand why generation was blocked and when it will reset.
+
+**Architecture Decision Required (GAP-008)**
+
+| Option | How | Pros | Cons |
+|---|---|---|---|
+| **A — DynamoDB counter** | Lambda reads/writes `QuotaCounters` DynamoDB table: PK=QUOTA#TEACHER#{teacherId}, SK=DATE#{YYYY-MM-DD}, count AtomicAdd | Granular per-teacher, per-day; admin-configurable tiers; consistent | Adds DynamoDB read/write on every generate call; slightly higher latency |
+| **B — API GW Usage Plan** | Each teacher API key gets usage plan; Lambda not involved | No Lambda cost for quota check; enforced at edge | API GW keys ≠ JWTs; requires separate key management; not user-aware without extra mapping; poor UX (429 from GW with no friendly message) |
+| **Recommendation:** Option A — DynamoDB counter | Consistent with DynamoDB-first data strategy; supports future admin config UI and billing tiers; user-friendly 429 with reset timestamp |
+
+**Quota Contract (Option A)**
+
+| Field | Value |
+|---|---|
+| Default daily limit | 50 worksheets per teacher |
+| Admin override | Configurable per teacherId via QuotaConfig table (or GSI on Users table) |
+| Quota window | UTC day (00:00:00Z to 23:59:59Z) |
+| Counter key | `PK=QUOTA#TEACHER#{teacherId} SK=DATE#{YYYY-MM-DD}` |
+| Counter update | Atomic `ADD count 1` via DynamoDB UpdateItem with ConditionExpression `count < limit` |
+| Response on limit | HTTP 429 `{ success: false, error: 'Daily generation limit reached.', errorCode: 'QUOTA_EXCEEDED', code: 'WG_QUOTA_EXCEEDED', quotaResetAt: '<next UTC midnight ISO>' }` |
+
+**Acceptance Criteria**
+
+| # | Given | When | Then |
+|---|---|---|---|
+| AC-005-01 | Teacher has generated 49 worksheets today | They call POST /api/generate | Request proceeds normally (count → 50) |
+| AC-005-02 | Teacher has generated 50 worksheets today | They call POST /api/generate | 429 returned with `WG_QUOTA_EXCEEDED`, `quotaResetAt` field is next UTC midnight |
+| AC-005-03 | Admin has set teacher quota to 100 | Teacher calls POST /api/generate on 51st call | Request proceeds (custom limit honored) |
+| AC-005-04 | Quota DynamoDB write fails (non-blocking) | Generation completes | Request is NOT blocked; error logged as warn; best-effort behavior |
+| AC-005-05 | Quota DynamoDB read fails | Before generation | 500 returned only if quota is mandatory; if quota is best-effort, log warn and proceed |
+| AC-005-06 | Teacher has not generated any worksheet today | First generate of the day | Counter is created with count=1; no quota error |
+| AC-005-07 | Teacher hits quota at 11:59:59 PM UTC | Next call at 00:00:01 AM UTC next day | New day counter created; quota not exceeded |
+| AC-005-08 | Quota check runs before AI generation | Handler stage order | Quota block at stage 'quota:check' before any AI, S3, or SSM calls |
+
+**Out of Scope**
+- Frontend quota indicator / warning UI
+- Quota reset via admin API endpoint (Phase 2)
+- Per-student or per-parent quota enforcement
+- Billing tier enforcement (Phase 2)
+
+**QA Test Locations**
+- `tests/unit/generateHandler.test.js` — add describe block "quota enforcement" (mock DynamoDB)
+- `tests/integration/generateFlow.test.js` — add scenario: quota exceeded → 429
+
+**Dependencies**
+- TASK-QB-003 (QuestionBank DynamoDB table already planned — QuotaCounters can share the same CDK construct pattern)
+- Architect must confirm: is quota check blocking or best-effort?
+
+---
+
+## 9.3 TASK-GEN-008 — QB_ADAPTER DynamoDB Schema Decision
+
+### Feature: Production Question Bank Storage Contract
+
+**User Story**
+As a **developer building the DynamoDB adapter**, I need a fully specified table schema (key structure, GSI definitions, attribute names, access patterns) so that I can implement the adapter without design ambiguity.
+
+**Canonical Table Schema: QuestionBank**
+
+```
+Table: learnfyra-{env}-question-bank
+Billing mode: PAY_PER_REQUEST (on-demand)
+Removal policy: RETAIN (prod), DESTROY (dev/staging)
+
+Primary Key:
+  PK (string)  = QUESTION#{questionId}
+  SK (string)  = METADATA
+
+Attributes:
+  questionId     (string)   UUID v4 — generated by adapter
+  subject        (string)   Math | ELA | Science | Social Studies | Health
+  grade          (number)   1–10
+  topic          (string)   curriculum topic string (max 200 chars)
+  difficulty     (string)   Easy | Medium | Hard | Mixed
+  questionText   (string)   full question text
+  questionType   (string)   multiple-choice | fill-in-the-blank | short-answer | true-false | matching | show-your-work | word-problem
+  options        (list)     only present for multiple-choice; exactly 4 strings ["A. …", "B. …", "C. …", "D. …"]
+  correctAnswer  (string)   correct answer string
+  explanation    (string)   explanation for answer key
+  points         (number)   1 or 2
+  source         (string)   'ai' | 'admin' | 'imported'
+  modelUsed      (string)   Claude model ID that generated this question (or 'admin' if manually created)
+  hash           (string)   SHA-256 of normalized questionText+subject+grade+difficulty — dedup key
+  reuseCount     (number)   starts at 0; incremented on each bank selection
+  status         (string)   ACTIVE | FLAGGED | RETIRED
+  createdAt      (string)   ISO-8601 UTC timestamp
+  lastUsedAt     (string)   ISO-8601 UTC timestamp — updated on each selection
+  tags           (list)     optional CCSS/NGSS standard code strings
+```
+
+**GSI Definitions**
+
+```
+GSI1: CurriculumQuery (primary lookup — by grade, subject, topic, difficulty)
+  PK = GRADE#{grade}#SUBJECT#{subject}
+  SK = TOPIC#{topic}#DIFF#{difficulty}
+  Projection: ALL
+  Purpose: getQuestionsForCriteria() — the main bank query on every generation call
+
+GSI2: DifficultyQuery (secondary lookup — by difficulty across all grades/subjects)
+  PK = DIFFICULTY#{difficulty}
+  SK = SUBJECT#{subject}#GRADE#{grade}
+  Projection: KEYS_ONLY
+  Purpose: Admin queries; model router difficulty distribution checks
+
+GSI3: HashIndex (deduplication)
+  PK = HASH#{hash}
+  SK = QUESTION#{questionId}
+  Projection: KEYS_ONLY
+  Purpose: addIfNotExists() condition check without full scan
+```
+
+**Access Patterns**
+
+| Operation | Method | Key | Notes |
+|---|---|---|---|
+| `getQuestionsForCriteria(grade, subject, topic, difficulty, limit)` | GSI1 Query | PK=GRADE#N#SUBJECT#X, SK begins_with TOPIC#Y#DIFF#Z | Filter status=ACTIVE; limit=questionCount*3 for pool |
+| `addIfNotExists(question)` | PutItem + ConditionExpression | PK=QUESTION#{uuid}, SK=METADATA | `attribute_not_exists(PK)` for UUID uniqueness; GSI3 check for hash dedup |
+| `recordQuestionReuse(questionId)` | UpdateItem | PK=QUESTION#{uuid}, SK=METADATA | `ADD reuseCount 1, SET lastUsedAt = now` |
+| `flagQuestion(questionId)` | UpdateItem | PK=QUESTION#{uuid}, SK=METADATA | `SET status = 'FLAGGED'` |
+| `getQuestionById(questionId)` | GetItem | PK=QUESTION#{uuid}, SK=METADATA | Direct lookup for admin UI |
+
+**QB Adapter Interface (unchanged)**
+The DynamoDB adapter must implement the same interface as the local JSON adapter:
+```javascript
+getQuestionsForCriteria(grade, subject, topic, difficulty, limit) → Promise<Question[]>
+addIfNotExists(question)                                          → Promise<void>
+recordQuestionReuse(questionId)                                   → Promise<void>
+```
+
+**Acceptance Criteria**
+
+| # | Given | When | Then |
+|---|---|---|---|
+| AC-008-01 | QuestionBank table exists in DynamoDB | GSI1 queried for grade=3, subject=Math, topic=Multiplication, difficulty=Medium | Returns all ACTIVE questions matching criteria |
+| AC-008-02 | Question with identical hash already exists | `addIfNotExists()` called | No write occurs (ConditionExpression prevents duplicate) |
+| AC-008-03 | Question with new hash inserted | `addIfNotExists()` called | New item written; reuseCount=0; status=ACTIVE |
+| AC-008-04 | Question used in a worksheet | `recordQuestionReuse()` called | reuseCount incremented; lastUsedAt updated |
+| AC-008-05 | QB_ADAPTER=local | Handler builds adapter | JSON adapter used; DynamoDB not called |
+| AC-008-06 | QB_ADAPTER=dynamodb | Handler builds adapter | DynamoDB adapter used; all reads/writes to table |
+
+**Out of Scope**
+- Admin UI for flagging/approving questions
+- Bulk import tooling
+- Cross-teacher question ownership (all questions are platform-global)
+
+**QA Test Locations**
+- `tests/unit/questionBankDynamoAdapter.test.js` (new file) — mock DynamoDB with aws-sdk-client-mock
+- `tests/unit/assembler.test.js` — QB_ADAPTER=dynamodb routing test
+
+---
+
+## 9.4 TASK-GEN-009 — DynamoDB Table for Question Bank (CDK)
+
+### Feature: QuestionBank DynamoDB Table Infrastructure
+
+**User Story**
+As a **DevOps engineer**, I need the QuestionBank DynamoDB table defined in the CDK stack with correct key structure, GSIs, IAM grants, and removal policies so that the DynamoDB adapter can be deployed to staging and production.
+
+**Acceptance Criteria**
+
+| # | Given | When | Then |
+|---|---|---|---|
+| AC-009-01 | CDK synth runs for any env | `npx cdk synth` | Zero warnings; CloudFormation template includes QuestionBank table definition |
+| AC-009-02 | Dev/staging environment | CDK deploys | RemovalPolicy.DESTROY so teardown works cleanly |
+| AC-009-03 | Production environment | CDK deploys | RemovalPolicy.RETAIN so data is not lost on stack update |
+| AC-009-04 | Generate Lambda deployed | Lambda environment | `QB_TABLE_NAME` env var set to actual table name (no hardcoded name) |
+| AC-009-05 | Generate Lambda deployed | IAM | `grantReadWriteData` applied — Lambda has PutItem, GetItem, UpdateItem, Query on table + indexes |
+| AC-009-06 | CDK assertion test runs | `cd infra/cdk && npm test` | Test confirms table exists, GSI1 (CurriculumQuery) defined, GSI2 (DifficultyQuery) defined, billing mode is PAY_PER_REQUEST |
+| AC-009-07 | Staging deploy with QB_ADAPTER=dynamodb | Generation request | Lambda reads/writes to DynamoDB table successfully (smoke test) |
+
+**CDK Construct Specification**
+
+```typescript
+// Table name pattern (no hardcoded name):
+const questionBankTable = new dynamodb.Table(this, 'QuestionBankTable', {
+  tableName: `learnfyra-${appEnv}-question-bank`,
+  partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+  billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+  removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+  pointInTimeRecovery: isProd,
+});
+
+// GSI1: CurriculumQuery
+questionBankTable.addGlobalSecondaryIndex({
+  indexName: 'CurriculumQuery',
+  partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'GSI1SK', type: dynamodb.AttributeType.STRING },
+  projectionType: dynamodb.ProjectionType.ALL,
+});
+
+// GSI2: DifficultyQuery
+questionBankTable.addGlobalSecondaryIndex({
+  indexName: 'DifficultyQuery',
+  partitionKey: { name: 'GSI2PK', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'GSI2SK', type: dynamodb.AttributeType.STRING },
+  projectionType: dynamodb.ProjectionType.KEYS_ONLY,
+});
+
+// GSI3: HashIndex (dedup)
+questionBankTable.addGlobalSecondaryIndex({
+  indexName: 'HashIndex',
+  partitionKey: { name: 'HASH', type: dynamodb.AttributeType.STRING },
+  projectionType: dynamodb.ProjectionType.KEYS_ONLY,
+});
+
+// IAM grant + env var injection
+questionBankTable.grantReadWriteData(generateFn);
+generateFn.addEnvironment('QB_TABLE_NAME', questionBankTable.tableName);
+```
+
+**CloudWatch Alarms (add to CDK)**
+- `QuestionBankSystemErrors` — Sum of SystemErrors > 0 over 5 min → SNS alert
+- `QuestionBankUserErrors` — Sum of UserErrors > 10 over 5 min → SNS alert (misconfigured adapter)
+
+**Dependencies**
+- TASK-GEN-008 schema decision (this task implements it)
+- Must not break existing CDK synth for any environment
+
+**Out of Scope**
+- DynamoDB adapter code (TASK-QB-004)
+- Data migration from local JSON to DynamoDB (separate migration task)
+- Backups beyond point-in-time recovery
